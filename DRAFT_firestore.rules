@@ -1,0 +1,166 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // DEFAULT DENY
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // GLOBAL HELPERS
+    // ===============================================================
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isVerified() && request.auth.token.email == 'marcelogutama3eroa@gmail.com';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isVerified() && (request.auth.uid == userId || isAdmin());
+    }
+
+    function isAccountActive() {
+      return isAdmin() || (
+        isVerified() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'ENABLED'
+      );
+    }
+
+    // ===============================================================
+    // VALIDATION BLUEPRINTS
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.email == request.auth.token.email &&
+             data.pin is string && data.pin.matches('^\\d{6}$') &&
+             data.status in ['ENABLED', 'DISABLED'] &&
+             data.role in ['ADMIN', 'USER'] &&
+             (data.ruc == null || (data.ruc is string && data.ruc.size() <= 20)) &&
+             (data.phone == null || (data.phone is string && data.phone.size() <= 20)) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidBeneficiary(data) {
+      return data.userId == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidInvoice(data) {
+      return data.userId == request.auth.uid &&
+             data.beneficiaryName is string && data.beneficiaryName.size() > 0 &&
+             data.concept is string && data.concept.size() > 0 &&
+             data.totalValue is number && data.totalValue > 0 &&
+             data.finalTotal is number && data.finalTotal >= 0 &&
+             data.months is number && data.months > 0 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidCheck(data) {
+      return data.userId == request.auth.uid &&
+             data.invoiceId is string &&
+             data.amount is number && data.amount > 0 &&
+             data.status in ['PENDING', 'PAID'] &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // COLLECTIONS
+    // ===============================================================
+    
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if isAdmin();
+      
+      allow create: if isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().role == 'USER' && 
+                    incoming().status == 'ENABLED' &&
+                    incoming().createdAt == request.time;
+      
+      allow update: if isOwner(userId) && (
+        isAdmin() || (
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'ruc', 'phone', 'pin', 'lastPinEntry', 'pinInactivityLimit']) &&
+          isValidUser(incoming()) &&
+          incoming().role == existing().role &&
+          incoming().status == existing().status &&
+          incoming().createdAt == existing().createdAt
+        )
+      );
+    }
+
+    match /beneficiaries/{id} {
+      allow get: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      
+      allow create: if isAccountActive() && isValidBeneficiary(incoming()) && isValidId(id) &&
+                    incoming().createdAt == request.time;
+      allow delete: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /invoices/{id} {
+      allow get: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      
+      allow create: if isAccountActive() && isValidInvoice(incoming()) && isValidId(id) &&
+                    incoming().createdAt == request.time;
+      allow delete: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /checks/{id} {
+      allow get: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      
+      allow create: if isAccountActive() && isValidCheck(incoming()) && isValidId(id) && 
+                    exists(/databases/$(database)/documents/invoices/$(incoming().invoiceId)) &&
+                    incoming().createdAt == request.time;
+      
+      allow update: if isVerified() && (
+        isAdmin() || (
+          resource.data.userId == request.auth.uid &&
+          isValidCheck(incoming()) &&
+          incoming().userId == existing().userId &&
+          incoming().invoiceId == existing().invoiceId &&
+          incoming().createdAt == existing().createdAt &&
+          (
+            // Action: Mark as Paid
+            (existing().status == 'PENDING' && incoming().status == 'PAID' && 
+             incoming().diff(existing()).affectedKeys().hasOnly(['status', 'paidAt', 'paidBy', 'amount'])) ||
+            // Allow general updates if still PENDING? Actually, the app might want to edit check number etc.
+            (existing().status == 'PENDING' && incoming().status == 'PENDING')
+          )
+        )
+      );
+      
+      allow delete: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /settings/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+  }
+}

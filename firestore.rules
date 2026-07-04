@@ -1,0 +1,206 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // DEFAULT DENY
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // GLOBAL HELPERS
+    // ===============================================================
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn(); // Relaxed email_verified for debugging
+    }
+
+    function isAdmin() {
+      return isVerified() && request.auth.token.email == 'marcelogutama3eroa@gmail.com';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isVerified() && (request.auth.uid == userId);
+    }
+
+    function isOwnerOrAdmin(userId) {
+      return isVerified() && (request.auth.uid == userId || isAdmin());
+    }
+
+    function isAccountActive() {
+      return isAdmin() || (
+        isVerified() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'ENABLED'
+      );
+    }
+
+    // ===============================================================
+    // VALIDATION BLUEPRINTS
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.email is string &&
+             data.pin is string && data.pin.matches('^\\d{6}$') &&
+             data.status in ['ENABLED', 'DISABLED'] &&
+             data.role in ['ADMIN', 'USER'] &&
+             (data.ruc == null || (data.ruc is string && data.ruc.size() <= 20)) &&
+             (data.phone == null || (data.phone is string && data.phone.size() <= 20)) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidBeneficiary(data) {
+      return (data.userId == request.auth.uid || isAdmin()) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidInvoice(data) {
+      return (data.userId == request.auth.uid || isAdmin()) &&
+             data.beneficiaryName is string && data.beneficiaryName.size() > 0 &&
+             data.concept is string && data.concept.size() > 0 &&
+             data.totalValue is number && data.totalValue >= 0 &&
+             data.finalTotal is number && data.finalTotal >= 0 &&
+             data.months is number && data.months > 0 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidCheck(data) {
+      return (data.userId == request.auth.uid || isAdmin()) &&
+             data.invoiceId is string &&
+             data.amount is number && data.amount > 0 &&
+             data.status in ['PENDING', 'PAID', 'DELETED'] &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidAudit(data) {
+      return data.action is string && data.action.size() > 0 &&
+             data.details is string && data.details.size() > 0 &&
+             data.userId is string &&
+             data.userEmail is string &&
+             (data.targetId == null || data.targetId is string) &&
+             data.timestamp == request.time;
+    }
+
+    // ===============================================================
+    // COLLECTIONS
+    // ===============================================================
+    
+    match /users/{userId} {
+      allow get: if isOwnerOrAdmin(userId);
+      allow list: if isAdmin();
+      
+      allow create: if isOwnerOrAdmin(userId) && isValidUser(incoming()) && 
+                    (isAdmin() || (incoming().role == 'USER' && incoming().status == 'ENABLED')) &&
+                    incoming().createdAt == request.time;
+      
+      allow update: if isOwnerOrAdmin(userId) && (
+        isAdmin() || (
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'ruc', 'phone', 'pin', 'lastPinEntry', 'pinInactivityLimit']) &&
+          isValidUser(incoming()) &&
+          incoming().role == existing().role &&
+          incoming().status == existing().status &&
+          incoming().createdAt == existing().createdAt
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    match /beneficiaries/{id} {
+      allow get: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      
+      allow create: if isAccountActive() && isValidBeneficiary(incoming()) && isValidId(id) &&
+                    incoming().createdAt == request.time;
+      allow update: if isAdmin();
+      allow delete: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /invoices/{id} {
+      allow get: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      
+      allow create: if isAccountActive() && isValidInvoice(incoming()) && isValidId(id) &&
+                    incoming().createdAt == request.time;
+      allow update: if isAdmin();
+      allow delete: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /employees/{id} {
+      allow read, write: if isVerified();
+    }
+    match /budgets/{id} {
+      allow read, write: if isVerified();
+    }
+    match /sales/{id} {
+      allow read, write: if isVerified();
+    }
+    match /collections/{id} {
+      allow read, write: if isVerified();
+    }
+
+    match /checks/{id} {
+      allow read: if isVerified();
+      allow list: if isVerified();
+      
+      allow create: if isAccountActive() && isValidCheck(incoming()) && isValidId(id) && 
+                    exists(/databases/$(database)/documents/invoices/$(incoming().invoiceId)) &&
+                    incoming().createdAt == request.time;
+      
+      allow update: if isVerified() && (
+        isAdmin() || (
+          resource.data.userId == request.auth.uid &&
+          isValidCheck(incoming()) &&
+          incoming().userId == existing().userId &&
+          incoming().invoiceId == existing().invoiceId &&
+          incoming().createdAt == existing().createdAt &&
+          (
+            // Action: Mark as Paid
+            (existing().status == 'PENDING' && incoming().status == 'PAID' && 
+             incoming().diff(existing()).affectedKeys().hasOnly(['status', 'paidAt', 'paidBy', 'amount'])) ||
+            // Action: Soft Delete (from PENDING or PAID)
+            ((existing().status == 'PENDING' || existing().status == 'PAID') && incoming().status == 'DELETED' &&
+             incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
+            // Action: Restore
+            (existing().status == 'DELETED' && incoming().status == 'PENDING' &&
+             incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
+            // Allow general updates if still PENDING?
+            (existing().status == 'PENDING' && incoming().status == 'PENDING')
+          )
+        )
+      );
+      
+      allow delete: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /settings/{userId} {
+      allow read, write: if isOwnerOrAdmin(userId);
+    }
+
+    match /auditLogs/{id} {
+      allow create: if isVerified() && isValidAudit(incoming()) && isValidId(id);
+      allow get, list: if isAdmin();
+    }
+  }
+}
