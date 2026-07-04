@@ -286,8 +286,9 @@ export default function Sales() {
                 <tr>
                   <th className="px-6 py-4">Fecha</th>
                   <th className="px-6 py-4">Vendedor</th>
+                  <th className="px-6 py-4">Cliente</th>
                   <th className="px-6 py-4">Tipo</th>
-                  <th className="px-6 py-4">Producto</th>
+                  <th className="px-6 py-4">Artículo / Producto Detallado</th>
                   <th className="px-6 py-4 text-right">Valor Final</th>
                   <th className="px-6 py-4 text-right">Acciones</th>
                 </tr>
@@ -298,8 +299,18 @@ export default function Sales() {
                     <td className="px-6 py-4 font-medium text-neutral-900 dark:text-neutral-100">
                       {sale.date}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 font-medium text-neutral-900 dark:text-neutral-100">
                       {getEmployeeName(sale.employeeId)}
+                    </td>
+                    <td className="px-6 py-4">
+                      {sale.clientName ? (
+                        <div className="flex items-center gap-2 text-neutral-900 dark:text-neutral-100 font-semibold bg-neutral-100 dark:bg-neutral-800/40 px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 w-fit">
+                          <User className="w-4 h-4 text-indigo-500" />
+                          <span>{sale.clientName}</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-neutral-400 italic">No especificado</span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
@@ -309,20 +320,20 @@ export default function Sales() {
                     </td>
                     <td className="px-6 py-4">
                       {sale.isMoto ? (
-                        <div className="flex flex-col gap-1 mb-1">
-                          <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-medium">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold">
                             <Bike className="w-4 h-4" />
                             <span className="capitalize text-xs">Moto {sale.motoType}</span>
                           </div>
-                          {sale.article && <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{sale.article}</div>}
+                          {sale.article ? (
+                            <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 bg-indigo-50/50 dark:bg-indigo-900/10 px-2.5 py-1 rounded-md border border-indigo-100 dark:border-indigo-800/20 w-fit">{sale.article}</div>
+                          ) : (
+                            <div className="text-xs text-neutral-400 italic">Detalle de moto pendiente</div>
+                          )}
                         </div>
                       ) : (
-                        <div className="font-medium text-neutral-900 dark:text-neutral-100 mb-1">{sale.article || 'Mercadería General'}</div>
-                      )}
-                      {sale.clientName && (
-                        <div className="text-xs text-neutral-500 flex items-center gap-1">
-                          <User className="w-3 h-3" />
-                          {sale.clientName}
+                        <div className="font-semibold text-neutral-900 dark:text-neutral-100 bg-neutral-50 dark:bg-neutral-800/20 px-2.5 py-1 rounded-md border border-neutral-200 dark:border-neutral-700 w-fit">
+                          {sale.article || 'Mercadería General'}
                         </div>
                       )}
                     </td>

@@ -260,18 +260,20 @@ export default function Collections() {
                     </td>
                     <td className="px-6 py-4 font-mono text-xs">
                       {coll.noReceipt ? (
-                        <div className="flex flex-col gap-1">
-                          <span className="text-amber-600 dark:text-amber-400 italic">Sin Recibo (Agencia)</span>
-                          {coll.clientName && (
-                            <div className="text-xs text-neutral-500 flex items-center gap-1">
-                              <User className="w-3 h-3" />
-                              {coll.clientName}
+                        <div className="flex flex-col gap-1.5">
+                          <span className="text-amber-600 dark:text-amber-400 font-bold text-xs uppercase tracking-wide">Cobro en Agencia</span>
+                          {coll.clientName ? (
+                            <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/20 px-3 py-1.5 rounded-lg border border-amber-200 dark:border-amber-800/30 w-fit">
+                              <User className="w-3.5 h-3.5 text-amber-500" />
+                              <span>{coll.clientName}</span>
                             </div>
+                          ) : (
+                            <span className="text-xs text-neutral-400 italic">Sin nombre de cliente</span>
                           )}
                         </div>
                       ) : (
                         <>
-                          <div className="text-indigo-600 dark:text-indigo-400">{coll.initialReceipt}</div>
+                          <div className="text-indigo-600 dark:text-indigo-400 font-bold">{coll.initialReceipt}</div>
                           <div className="text-neutral-500 dark:text-neutral-400">a {coll.finalReceipt}</div>
                         </>
                       )}

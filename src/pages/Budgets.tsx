@@ -283,9 +283,12 @@ export default function Budgets() {
         <div className="space-y-6">
           <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-sm p-6 text-white">
             <h3 className="text-indigo-100 text-sm font-medium mb-1">Presupuesto Global Ventas</h3>
-            <div className="text-3xl font-bold mb-4">
+            <div className="text-3xl font-bold mb-2">
               ${totalSalesBudget.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
+            <p className="text-xs text-indigo-200 mb-4 bg-indigo-950/25 p-2 rounded-lg">
+              * Muestra cómo se distribuye la meta global de ventas entre el personal de ventas.
+            </p>
             
             <div className="space-y-3 pt-4 border-t border-indigo-400/30">
               {employees.filter(e => e.role === 'vendedor' || e.role === 'ambos').map(emp => {
@@ -295,12 +298,14 @@ export default function Budgets() {
                 
                 return (
                   <div key={emp.id} className="text-sm">
-                    <div className="flex justify-between mb-1">
+                    <div className="flex justify-between items-center mb-1">
                       <span className="text-indigo-100 truncate pr-2">{emp.name} {emp.lastName}</span>
-                      <span className="font-medium">{pct.toFixed(1)}%</span>
+                      <span className="font-bold bg-indigo-950/40 px-2 py-0.5 rounded text-xs">
+                        {pct.toFixed(1)}% de la meta total
+                      </span>
                     </div>
                     <div className="w-full bg-indigo-950/30 rounded-full h-1.5">
-                      <div className="bg-white rounded-full h-1.5" style={{ width: `${pct}%` }}></div>
+                      <div className="bg-indigo-300 rounded-full h-1.5" style={{ width: `${pct}%` }}></div>
                     </div>
                   </div>
                 );
@@ -310,9 +315,12 @@ export default function Budgets() {
           
           <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl shadow-sm p-6 text-white">
             <h3 className="text-emerald-100 text-sm font-medium mb-1">Presupuesto Global Cobranzas</h3>
-            <div className="text-3xl font-bold mb-4">
+            <div className="text-3xl font-bold mb-2">
               ${totalCollectionsBudget.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
+            <p className="text-xs text-emerald-100 mb-4 bg-emerald-950/25 p-2.5 rounded-lg border border-emerald-400/20 leading-relaxed">
+              <strong>Nota Informativa:</strong> Este porcentaje representa la <strong>distribución/proporción</strong> asignada a cada empleado sobre el total corporativo. <strong>No</strong> representa su progreso de cobro actual.
+            </p>
             
             <div className="space-y-3 pt-4 border-t border-emerald-400/30">
               {employees.filter(e => e.role === 'cobrador' || e.role === 'ambos').map(emp => {
@@ -322,12 +330,14 @@ export default function Budgets() {
                 
                 return (
                   <div key={emp.id} className="text-sm">
-                    <div className="flex justify-between mb-1">
+                    <div className="flex justify-between items-center mb-1">
                       <span className="text-emerald-100 truncate pr-2">{emp.name} {emp.lastName}</span>
-                      <span className="font-medium">{pct.toFixed(1)}%</span>
+                      <span className="font-bold bg-emerald-950/40 px-2 py-0.5 rounded text-xs">
+                        {pct.toFixed(1)}% del cupo global
+                      </span>
                     </div>
                     <div className="w-full bg-emerald-950/30 rounded-full h-1.5">
-                      <div className="bg-white rounded-full h-1.5" style={{ width: `${pct}%` }}></div>
+                      <div className="bg-emerald-300 rounded-full h-1.5" style={{ width: `${pct}%` }}></div>
                     </div>
                   </div>
                 );

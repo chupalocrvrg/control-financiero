@@ -174,6 +174,29 @@ async function startServer() {
   // Middleware to parse incoming JSON bodies
   app.use(express.json());
 
+  app.get("/api/diagnostics/db", async (req, res) => {
+    try {
+      if (!firestoreDb) {
+        return res.status(500).json({ error: "Firestore is not initialized" });
+      }
+      const empSnap = await firestoreDb.collection("employees").get();
+      const employees = empSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      const budgetSnap = await firestoreDb.collection("budgets").get();
+      const budgets = budgetSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      const collSnap = await firestoreDb.collection("collections").get();
+      const collections = collSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      const salesSnap = await firestoreDb.collection("sales").get();
+      const sales = salesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      res.json({ employees, budgets, collections, sales });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // 1. Endpoint api/users/profile - user persistence (upsert)
   app.post("/api/users/profile", async (req, res) => {
     try {

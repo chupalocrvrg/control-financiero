@@ -279,7 +279,7 @@ export default function Dashboard() {
       const d = parseISO(c.initialDate);
       return d.getTime() >= start.getTime() && d.getTime() <= end.getTime();
     });
-    const cobros = monthColls.reduce((acc, c) => acc + (c.totalValue || 0), 0);
+    const cobros = monthColls.reduce((acc, c) => acc + (c.totalCollected || 0), 0);
 
     if (total > 0 || ventas > 0 || cobros > 0 || i >= startOffset) {
       monthlyData.push({ month: monthKey, total, paid, pending, ventas, cobros });
