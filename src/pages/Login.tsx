@@ -18,11 +18,7 @@ const inIframe = window.self !== window.top;
     try {
       await login();
     } catch (err: any) {
-      if (inIframe && err.message.includes('Navegador no admitido')) {
-        setError("Su navegador bloquea el acceso en esta vista incrustada. Por favor, abra la aplicación en una pestaña nueva para iniciar sesión.");
-      } else {
-        setError(err.message);
-      }
+      setError(err.message);
     }
   };
 
