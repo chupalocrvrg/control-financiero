@@ -71,7 +71,7 @@ export default function Dashboard() {
   const [allCommerceData, setAllCommerceData] = useState<CommerceData[]>([]);
   const [allSales, setAllSales] = useState<any[]>([]);
   const [allCollections, setAllCollections] = useState<any[]>([]);
-  const [selectedCommerceEmployee, setSelectedCommerceEmployee] = useState<string>('global');
+
 
   useEffect(() => {
     if (user) {
@@ -1250,31 +1250,13 @@ const handleGenerateAdvancedReport = async (reportType: 'pdf' | 'excel') => {
             </h2>
             <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">Progreso de ventas y cobranzas vs presupuestos</p>
           </div>
-          <div>
-            <select
-              value={selectedCommerceEmployee}
-              onChange={(e) => setSelectedCommerceEmployee(e.target.value)}
-              className="px-4 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none text-neutral-900 dark:text-neutral-100"
-            >
-              <option value="global">Resumen Global</option>
-              {allCommerceData.map(d => (
-                <option key={d.employee.id} value={d.employee.id}>{d.employee.name} {d.employee.lastName}</option>
-              ))}
-            </select>
-          </div>
         </div>
 
-        {selectedCommerceEmployee === 'global' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <GlobalCommerceCard allData={allCommerceData} />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {allCommerceData.filter(d => d.employee.id === selectedCommerceEmployee).map((data, idx) => (
-              <CommerceCard key={idx} data={data} />
-            ))}
-          </div>
-        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {allCommerceData.map((data, idx) => (
+            <CommerceCard key={idx} data={data} />
+          ))}
+        </div>
       </section>
 
     </div>

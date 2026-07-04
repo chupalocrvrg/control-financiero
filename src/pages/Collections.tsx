@@ -24,6 +24,7 @@ interface CollectionData {
   depositsTransfers: number;
   cashFinal: number;
   createdAt: any;
+  clientName?: string;
 }
 
 export default function Collections() {
@@ -46,6 +47,7 @@ export default function Collections() {
     finalReceipt: '',
     totalCollected: '',
     depositsTransfers: '',
+    clientName: '',
   });
   
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -110,6 +112,7 @@ export default function Collections() {
         finalReceipt: collectionData.finalReceipt || '',
         totalCollected: collectionData.totalCollected.toString(),
         depositsTransfers: collectionData.depositsTransfers.toString(),
+        clientName: collectionData.clientName || '',
       });
     } else {
       setEditingCollection(null);
@@ -122,6 +125,7 @@ export default function Collections() {
         finalReceipt: '',
         totalCollected: '',
         depositsTransfers: '',
+        clientName: '',
       });
     }
     setIsModalOpen(true);
@@ -155,6 +159,7 @@ export default function Collections() {
         totalCollected: tCollected,
         depositsTransfers: dTransfers,
         cashFinal: cFinal,
+        clientName: formData.noReceipt ? formData.clientName : null,
       };
 
       if (editingCollection) {
@@ -255,7 +260,15 @@ export default function Collections() {
                     </td>
                     <td className="px-6 py-4 font-mono text-xs">
                       {coll.noReceipt ? (
-                        <span className="text-amber-600 dark:text-amber-400 italic">Sin Recibo (Agencia)</span>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-amber-600 dark:text-amber-400 italic">Sin Recibo (Agencia)</span>
+                          {coll.clientName && (
+                            <div className="text-xs text-neutral-500 flex items-center gap-1">
+                              <User className="w-3 h-3" />
+                              {coll.clientName}
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <>
                           <div className="text-indigo-600 dark:text-indigo-400">{coll.initialReceipt}</div>
@@ -346,6 +359,22 @@ export default function Collections() {
                   </label>
                 </div>
               </div>
+              
+              {formData.noReceipt && (
+                <div className="mb-6 bg-white dark:bg-neutral-900 p-4 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1 flex items-center gap-1.5">
+                    <User className="w-4 h-4 text-neutral-400" /> Nombre del Cliente
+                  </label>
+                  <input
+                    type="text"
+                    required={formData.noReceipt}
+                    value={formData.clientName}
+                    onChange={(e) => setFormData({...formData, clientName: e.target.value})}
+                    className="w-full px-4 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-neutral-900 dark:text-white"
+                    placeholder="Nombre del cliente al que se le cobró"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-neutral-50 dark:bg-neutral-800/30 p-4 rounded-xl border border-neutral-200 dark:border-neutral-800">
                 <div className="space-y-4">
