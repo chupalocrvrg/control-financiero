@@ -186,6 +186,9 @@ export default function WarehousesTab() {
       });
   };
 
+  const uniqueWarehouseNames = Array.from(new Set(warehouses.map(w => w.name).filter(Boolean))).sort() as string[];
+  const uniqueAssignedPersons = Array.from(new Set(warehouses.map(w => w.assignedPerson).filter(Boolean))).sort() as string[];
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -371,11 +374,17 @@ export default function WarehousesTab() {
                   <input
                     type="text"
                     required
+                    list="warehouse-names-list"
                     placeholder="Ej. Bodega Central, Bodega Sur"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all uppercase"
                   />
+                  <datalist id="warehouse-names-list">
+                    {uniqueWarehouseNames.map(whName => (
+                      <option key={whName} value={whName} />
+                    ))}
+                  </datalist>
                 </div>
 
                 <div>
@@ -383,11 +392,17 @@ export default function WarehousesTab() {
                   <input
                     type="text"
                     required
+                    list="assigned-persons-list"
                     placeholder="Ej. Juan Pérez"
                     value={formData.assignedPerson}
                     onChange={(e) => setFormData({ ...formData, assignedPerson: e.target.value })}
                     className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all uppercase"
                   />
+                  <datalist id="assigned-persons-list">
+                    {uniqueAssignedPersons.map(person => (
+                      <option key={person} value={person} />
+                    ))}
+                  </datalist>
                   <p className="text-[10px] text-neutral-400 font-medium mt-1">Obligatorio. Persona encargada de recibir o despachar mercaderías en esta bodega.</p>
                 </div>
               </div>

@@ -4,6 +4,10 @@ export interface Article {
   quantity: number; // Total quantity across all warehouses
   series?: string; // Optional serial number
   minStockAlert: number; // Required minimum stock for alert
+  category?: string; // Predictive category (cocinas, neveras, etc.)
+  brand?: string; // Predictive brand
+  model?: string; // Predictive model
+  barcode?: string; // Optional barcode
   userId: string; // Owner enterprise ID
   createdAt: any;
 }

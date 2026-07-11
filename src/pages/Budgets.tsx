@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, getDocs, doc, setDoc, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, query, orderBy, where } from 'firebase/firestore';
 import { Target, AlertCircle, Save, Calendar, Search } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { format, startOfMonth, addMonths, subMonths, parse } from 'date-fns';
@@ -29,26 +29,30 @@ export default function Budgets() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const currentEnterpriseId = profile?.enterpriseId || user?.uid;
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     fetchData();
-  }, [currentMonth, user]);
+  }, [currentMonth, user, currentEnterpriseId]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Fetch employees
-      const empQ = query(collection(db, 'employees'), orderBy('name'));
+      // Fetch employees belonging to current enterprise
+      const empQ = query(collection(db, 'employees'), where('enterpriseId', '==', currentEnterpriseId));
       const empSnapshot = await getDocs(empQ);
       const empData = empSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee));
+      
+      // Sort client-side
+      empData.sort((a, b) => a.name.localeCompare(b.name));
       setEmployees(empData);
       
-      // Fetch budgets for current month
-      const budgetQ = query(collection(db, 'budgets'));
+      // Fetch budgets belonging to current enterprise
+      const budgetQ = query(collection(db, 'budgets'), where('enterpriseId', '==', currentEnterpriseId));
       const budgetSnapshot = await getDocs(budgetQ);
       
       const budgetMap: Record<string, Budget> = {};
@@ -104,6 +108,7 @@ export default function Budgets() {
           month: budget.month,
           salesBudget: budget.salesBudget || 0,
           collectionsBudget: budget.collectionsBudget || 0,
+          enterpriseId: currentEnterpriseId,
           updatedAt: new Date().toISOString()
         });
       });

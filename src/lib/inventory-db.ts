@@ -226,3 +226,163 @@ export async function executeInventorySale(
 
   await batch.commit();
 }
+
+/**
+ * Reverts a warehouse stock transfer and marks it as deleted.
+ */
+export async function revertTransfer(transferId: string, userId: string, revertReason: string) {
+  const batch = writeBatch(db);
+  const transferRef = doc(db, 'transfers', transferId);
+  const transferSnap = await getDoc(transferRef);
+  if (!transferSnap.exists()) {
+    throw new Error('La transferencia no existe.');
+  }
+  const data = transferSnap.data();
+  if (data.status === 'ELIMINADO') {
+    throw new Error('Esta transferencia ya fue eliminada/revertida.');
+  }
+  const fromWarehouseId = data.fromWarehouseId;
+  const toWarehouseId = data.toWarehouseId;
+  const articles = data.articles || [];
+  const revertedArticlesLog: Array<{ articleId: string; name: string; requested: number; actual: number }> = [];
+
+  for (const item of articles) {
+    // Find current available quantity in the target warehouse (toWarehouseId)
+    const invId = `${toWarehouseId}_${item.articleId}`;
+    const invSnap = await getDoc(doc(db, 'warehouse_inventory', invId));
+    const availableQty = invSnap.exists() ? invSnap.data().quantity || 0 : 0;
+    
+    // We can only subtract what is actually available in the target warehouse
+    const qToRevert = Math.min(item.quantity, availableQty);
+    revertedArticlesLog.push({
+      articleId: item.articleId,
+      name: item.name,
+      requested: item.quantity,
+      actual: qToRevert
+    });
+
+    // Add stock back to the original source warehouse (fromWarehouseId)
+    await adjustStockAndGlobalQuantity(batch, fromWarehouseId, item.articleId, qToRevert, userId);
+    // Subtract stock from target warehouse (toWarehouseId)
+    await adjustStockAndGlobalQuantity(batch, toWarehouseId, item.articleId, -qToRevert, userId);
+  }
+
+  // Update transfer document status
+  batch.update(transferRef, {
+    status: 'ELIMINADO',
+    revertReason,
+    revertedArticles: revertedArticlesLog,
+    revertedAt: Timestamp.now()
+  });
+  await batch.commit();
+}
+
+/**
+ * Reverts a loan or return and marks it as deleted.
+ */
+export async function revertLoanReturn(loanReturnId: string, userId: string, revertReason: string) {
+  const batch = writeBatch(db);
+  const ref = doc(db, 'loans_returns', loanReturnId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) {
+    throw new Error('El movimiento no existe.');
+  }
+  const data = snap.data();
+  if (data.status === 'ELIMINADO') {
+    throw new Error('Este movimiento ya fue eliminado/revertida.');
+  }
+  const type = data.type; // 'LOAN' or 'RETURN'
+  const warehouseId = data.warehouseId;
+  const isDirectSale = data.isDirectSale;
+  const articles = data.articles || [];
+  const revertedArticlesLog: Array<{ articleId: string; name: string; requested: number; actual: number }> = [];
+
+  for (const item of articles) {
+    const artSnap = await getDoc(doc(db, 'articles', item.articleId));
+    const currentGlobalQty = artSnap.exists() ? artSnap.data().quantity || 0 : 0;
+    
+    if (type === 'LOAN') {
+      // LOAN originally added stock. To revert: we must subtract stock.
+      if (!isDirectSale && warehouseId) {
+        // Find current available quantity in this warehouse
+        const invId = `${warehouseId}_${item.articleId}`;
+        const invSnap = await getDoc(doc(db, 'warehouse_inventory', invId));
+        const availableQty = invSnap.exists() ? invSnap.data().quantity || 0 : 0;
+        
+        const qToRevert = Math.min(item.quantity, availableQty);
+        revertedArticlesLog.push({
+          articleId: item.articleId,
+          name: item.name,
+          requested: item.quantity,
+          actual: qToRevert
+        });
+        
+        // Subtract from warehouse
+        await adjustStockAndGlobalQuantity(batch, warehouseId, item.articleId, -qToRevert, userId);
+      } else {
+        // Direct sale: subtract from global only
+        const qToRevert = Math.min(item.quantity, currentGlobalQty);
+        revertedArticlesLog.push({
+          articleId: item.articleId,
+          name: item.name,
+          requested: item.quantity,
+          actual: qToRevert
+        });
+        
+        const articleRef = doc(db, 'articles', item.articleId);
+        batch.update(articleRef, { quantity: Math.max(0, currentGlobalQty - qToRevert) });
+      }
+    } else {
+      // RETURN originally subtracted stock. To revert: we must add stock back to warehouse (which also increases global).
+      // Adding stock is always mathematically fully available to do
+      revertedArticlesLog.push({
+        articleId: item.articleId,
+        name: item.name,
+        requested: item.quantity,
+        actual: item.quantity
+      });
+      if (warehouseId) {
+        await adjustStockAndGlobalQuantity(batch, warehouseId, item.articleId, item.quantity, userId);
+      }
+    }
+  }
+
+  // Update document status
+  batch.update(ref, {
+    status: 'ELIMINADO',
+    revertReason,
+    revertedArticles: revertedArticlesLog,
+    revertedAt: Timestamp.now()
+  });
+  await batch.commit();
+}
+
+/**
+ * Reverts an inventory sale and marks it as deleted.
+ */
+export async function revertInventorySale(saleId: string, userId: string, revertReason: string) {
+  const batch = writeBatch(db);
+  const ref = doc(db, 'inventory_sales', saleId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) {
+    throw new Error('La venta no existe.');
+  }
+  const data = snap.data();
+  if (data.status === 'ELIMINADO') {
+    throw new Error('Esta venta ya fue eliminada/revertida.');
+  }
+  const soldArticles = data.soldArticles || [];
+
+  for (const item of soldArticles) {
+    // Originally deducted stock from item.warehouseId. To revert: add it back!
+    await adjustStockAndGlobalQuantity(batch, item.warehouseId, item.articleId, item.quantity, userId);
+  }
+
+  // Update document status
+  batch.update(ref, {
+    status: 'ELIMINADO',
+    revertReason,
+    revertedAt: Timestamp.now()
+  });
+  await batch.commit();
+}

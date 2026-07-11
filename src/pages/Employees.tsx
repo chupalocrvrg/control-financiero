@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, orderBy, where } from 'firebase/firestore';
 import { Plus, Pencil, Trash2, Users, AlertCircle, Save, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
@@ -17,8 +17,9 @@ export default function Employees() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { showToast, showConfirm } = useNotification();
+  const currentEnterpriseId = profile?.enterpriseId || user?.uid;
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -33,15 +34,23 @@ export default function Employees() {
 
   useEffect(() => {
     fetchEmployees();
-  }, [user]);
+  }, [user, currentEnterpriseId]);
 
   const fetchEmployees = async () => {
     if (!user) return;
     try {
       setLoading(true);
-      const q = query(collection(db, 'employees'), orderBy('createdAt', 'desc'));
+      const q = query(collection(db, 'employees'), where('enterpriseId', '==', currentEnterpriseId));
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee));
+      
+      // Sort client-side to prevent needing compound indexes
+      data.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+
       setEmployees(data);
     } catch (err: any) {
       console.error('Error fetching employees:', err);
@@ -88,6 +97,7 @@ export default function Employees() {
           name: formData.name,
           lastName: formData.lastName,
           role: formData.role,
+          enterpriseId: currentEnterpriseId,
           createdAt: Timestamp.now()
         });
       }

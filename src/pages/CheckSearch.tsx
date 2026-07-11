@@ -31,13 +31,23 @@ interface Check {
 }
 
 export default function CheckSearch() {
-  const { user } = useAuth();
+  const { user, profile, originalUser } = useAuth();
   const { settings } = useSettings();
   const { showToast, showConfirm } = useNotification();
   const [loading, setLoading] = useState(false);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [checks, setChecks] = useState<Check[]>([]);
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
+
+  // SuperAdmin enterprise filter states
+  const [selectedEnterpriseId, setSelectedEnterpriseId] = useState<string>('');
+  const [enterprises, setEnterprises] = useState<{ id: string; name: string; email?: string }[]>([]);
+
+  const isSuperAdmin = profile?.role === 'ADMIN' || originalUser?.email === 'marcelogutama3eroa@gmail.com';
+
+  const defaultEnterpriseId = profile?.role === 'enterprise'
+    ? user?.uid
+    : (profile?.enterpriseId || user?.uid || '');
 
   // Input states for debounced search
   const [typedProvider, setTypedProvider] = useState('');
@@ -81,24 +91,67 @@ export default function CheckSearch() {
     if (user) {
       loadData();
     }
-  }, [user]);
+  }, [user, selectedEnterpriseId]);
+
+  useEffect(() => {
+    if (isSuperAdmin) {
+      loadEnterprises();
+    }
+  }, [isSuperAdmin]);
+
+  const loadEnterprises = async () => {
+    try {
+      const q = query(collection(db, 'users'), where('role', '==', 'enterprise'));
+      const snapshot = await getDocs(q);
+      const list = snapshot.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data().name || 'Empresa sin nombre',
+        email: doc.data().email
+      }));
+      setEnterprises(list);
+    } catch (error) {
+      console.error('Error loading enterprises for SuperAdmin search:', error);
+    }
+  };
 
   const loadData = async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const invoicesQuery = query(collection(db, 'invoices'), where('userId', '==', user.uid));
-      const checksQuery = query(collection(db, 'checks'), where('userId', '==', user.uid));
+      let loadedInvoices: Invoice[] = [];
+      let loadedChecks: Check[] = [];
 
-      const [invoicesSnap, checksSnap] = await Promise.all([
-        getDocs(invoicesQuery),
-        getDocs(checksQuery)
-      ]);
+      if (isSuperAdmin) {
+        // SuperAdmin fetches all documents and applies optional enterpriseId filter
+        const [invoicesAll, checksAll] = await Promise.all([
+          getDocs(collection(db, 'invoices')),
+          getDocs(collection(db, 'checks'))
+        ]);
+        
+        loadedInvoices = invoicesAll.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
+        loadedChecks = checksAll.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as Check))
+          .filter(c => (c as any).status !== 'DELETED');
+          
+        if (selectedEnterpriseId) {
+          loadedInvoices = loadedInvoices.filter((inv: any) => inv.enterpriseId === selectedEnterpriseId);
+          loadedChecks = loadedChecks.filter((c: any) => c.enterpriseId === selectedEnterpriseId);
+        }
+      } else {
+        // Regular user/employee: strictly limited to defaultEnterpriseId
+        const invoicesQuery = query(collection(db, 'invoices'), where('enterpriseId', '==', defaultEnterpriseId));
+        const checksQuery = query(collection(db, 'checks'), where('enterpriseId', '==', defaultEnterpriseId));
 
-      const loadedInvoices = invoicesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
-      const loadedChecks = checksSnap.docs
-        .map(doc => ({ id: doc.id, ...doc.data() } as Check))
-        .filter(c => (c as any).status !== 'DELETED');
+        const [invoicesRes, checksRes] = await Promise.all([
+          getDocs(invoicesQuery),
+          getDocs(checksQuery)
+        ]);
+
+        loadedInvoices = invoicesRes.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
+        loadedChecks = checksRes.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as Check))
+          .filter(c => (c as any).status !== 'DELETED');
+      }
 
       loadedInvoices.forEach(inv => {
         const invChecks = loadedChecks.filter(c => c.invoiceId === inv.id);
@@ -119,13 +172,25 @@ export default function CheckSearch() {
     if (!user) return;
     setTrashLoading(true);
     try {
-      const q = query(
-        collection(db, 'checks'),
-        where('userId', '==', user.uid),
-        where('status', '==', 'DELETED')
-      );
-      const snap = await getDocs(q);
-      setTrashChecks(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Check)));
+      if (isSuperAdmin) {
+        const snap = await getDocs(collection(db, 'checks'));
+        let list = snap.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as Check))
+          .filter(c => c.status === 'DELETED');
+          
+        if (selectedEnterpriseId) {
+          list = list.filter((c: any) => c.enterpriseId === selectedEnterpriseId);
+        }
+        setTrashChecks(list);
+      } else {
+        const q = query(
+          collection(db, 'checks'),
+          where('enterpriseId', '==', defaultEnterpriseId),
+          where('status', '==', 'DELETED')
+        );
+        const snap = await getDocs(q);
+        setTrashChecks(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Check)));
+      }
     } catch (e) {
       console.error("Error loading trash:", e);
     } finally {
@@ -137,7 +202,7 @@ export default function CheckSearch() {
     if (isTrashOpen) {
       loadTrashChecks();
     }
-  }, [isTrashOpen]);
+  }, [isTrashOpen, selectedEnterpriseId]);
 
   const filteredData = useMemo(() => {
     let filteredChecks = checks;
@@ -289,6 +354,32 @@ export default function CheckSearch() {
 
       {/* Filters Panel */}
       <div className="bg-white dark:bg-neutral-900 p-8 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
+        {isSuperAdmin && (
+          <div className="mb-8 p-4 bg-amber-50/40 dark:bg-amber-950/10 border border-amber-100 dark:border-amber-900/20 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center text-amber-600">
+                <Search className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-black text-amber-900 dark:text-amber-100 uppercase tracking-wider">Filtro de Empresa (SuperAdmin)</h4>
+                <p className="text-[10px] text-amber-600 dark:text-amber-400">Verifique el flujo de egresos filtrando por empresa matriz.</p>
+              </div>
+            </div>
+            <select
+              value={selectedEnterpriseId}
+              onChange={(e) => setSelectedEnterpriseId(e.target.value)}
+              className="bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-xl p-3 text-xs outline-none focus:ring-2 focus:ring-amber-500 font-bold dark:text-neutral-100 min-w-[240px]"
+            >
+              <option value="">-- Ver todas las empresas --</option>
+              {enterprises.map((ent) => (
+                <option key={ent.id} value={ent.id}>
+                  {ent.name} ({ent.email})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="flex justify-between items-center mb-8">
           <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-50 flex items-center gap-3">
             <Search className="w-6 h-6 text-indigo-500" /> Parámetros de Búsqueda

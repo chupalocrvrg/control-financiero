@@ -13,13 +13,18 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { logAudit, AuditAction } from '../lib/audit';
 
 export default function CheckEntry() {
-  const { user } = useAuth();
+  const { user, profile, originalUser } = useAuth();
   const { settings } = useSettings();
   const { showToast, showAlert } = useNotification();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [beneficiaries, setBeneficiaries] = useState<string[]>([]);
   
+  const [enterprises, setEnterprises] = useState<{ id: string; name: string; email?: string }[]>([]);
+  const [selectedEnterpriseId, setSelectedEnterpriseId] = useState<string>('');
+
+  const isSuperAdmin = profile?.role === 'ADMIN' || originalUser?.email === 'marcelogutama3eroa@gmail.com';
+
   const [formData, setFormData] = useState({
     beneficiaryName: '',
     invoiceNumber: '',
@@ -37,18 +42,52 @@ export default function CheckEntry() {
   const [installments, setInstallments] = useState<number[]>([]);
   const [finalTotal, setFinalTotal] = useState(0);
 
+  const currentEnterpriseId = isSuperAdmin
+    ? (selectedEnterpriseId || user?.uid || '')
+    : (profile?.role === 'enterprise' ? user?.uid : (profile?.enterpriseId || user?.uid || ''));
+
   useEffect(() => {
     if (user) {
       loadBeneficiaries();
+      if (isSuperAdmin) {
+        loadEnterprises();
+      }
     }
-  }, [user]);
+  }, [user, isSuperAdmin, selectedEnterpriseId]);
+
+  const loadEnterprises = async () => {
+    try {
+      const q = query(collection(db, 'users'), where('role', '==', 'enterprise'));
+      const snapshot = await getDocs(q);
+      const list = snapshot.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data().name || 'Empresa sin nombre',
+        email: doc.data().email
+      }));
+      setEnterprises(list);
+    } catch (error) {
+      console.error('Error loading enterprises for SuperAdmin:', error);
+    }
+  };
+
+  const getEnterpriseIdToSave = () => {
+    return currentEnterpriseId;
+  };
 
   const loadBeneficiaries = async () => {
     if (!user) return;
     try {
-      const q = query(collection(db, 'beneficiaries'), where('userId', '==', user.uid));
-      const snapshot = await getDocs(q);
-      setBeneficiaries(snapshot.docs.map(doc => doc.data().name));
+      const snapshot = await getDocs(collection(db, 'beneficiaries'));
+      const list = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() as any }))
+        .filter(item => 
+          item.enterpriseId === currentEnterpriseId || 
+          item.userId === user.uid || 
+          (!item.enterpriseId && !item.userId)
+        )
+        .map(item => item.name);
+      
+      setBeneficiaries(Array.from(new Set(list)));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'beneficiaries');
     }
@@ -131,6 +170,7 @@ export default function CheckEntry() {
           try {
             invRef = await addDoc(collection(db, 'invoices'), {
               userId: user!.uid,
+              enterpriseId: getEnterpriseIdToSave(),
               beneficiaryName: beneficiary,
               invoiceNumber: invoiceNum,
               concept: concept,
@@ -147,6 +187,7 @@ export default function CheckEntry() {
 
             await addDoc(collection(db, 'checks'), {
               userId: user!.uid,
+              enterpriseId: getEnterpriseIdToSave(),
               invoiceId: invRef.id,
               beneficiaryName: beneficiary,
               checkNumber: checkNum,
@@ -228,6 +269,7 @@ export default function CheckEntry() {
         try {
           await addDoc(collection(db, 'beneficiaries'), {
             userId: user.uid,
+            enterpriseId: getEnterpriseIdToSave(),
             name: formData.beneficiaryName,
             createdAt: serverTimestamp()
           });
@@ -241,6 +283,7 @@ export default function CheckEntry() {
       try {
         invoiceRef = await addDoc(collection(db, 'invoices'), {
           userId: user.uid,
+          enterpriseId: getEnterpriseIdToSave(),
           beneficiaryName: formData.beneficiaryName,
           invoiceNumber: formData.invoiceNumber,
           concept: formData.concept,
@@ -269,6 +312,7 @@ export default function CheckEntry() {
         try {
           await addDoc(collection(db, 'checks'), {
             userId: user.uid,
+            enterpriseId: getEnterpriseIdToSave(),
             invoiceId: invoiceRef.id,
             beneficiaryName: formData.beneficiaryName,
             checkNumber: checkNum,
@@ -367,6 +411,36 @@ export default function CheckEntry() {
       <div className="bg-white dark:bg-neutral-900 shadow-sm border border-neutral-100 dark:border-neutral-800 rounded-3xl overflow-hidden">
         <form onSubmit={handleSubmit} className="divide-y divide-neutral-50 dark:divide-neutral-800">
           <div className="p-8 space-y-8">
+            {/* SuperAdmin Enterprise Selector */}
+            {isSuperAdmin && (
+              <div className="p-6 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 rounded-2xl space-y-4 animate-in fade-in duration-300">
+                <div className="flex items-center gap-2">
+                  <User className="w-5 h-5 text-amber-600" />
+                  <div>
+                    <h4 className="text-sm font-black text-amber-900 dark:text-amber-100 uppercase tracking-wider">Modo SuperAdministrador</h4>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400">Asigne este egreso a una empresa matriz en particular, o manténgalo en la cuenta central del SuperAdmin.</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block pl-1">Asignar a Empresa:</label>
+                    <select
+                      value={selectedEnterpriseId}
+                      onChange={(e) => setSelectedEnterpriseId(e.target.value)}
+                      className="w-full bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-xl p-3 text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-neutral-50 font-bold"
+                    >
+                      <option value="">-- Mantener en mi cuenta de SuperAdmin --</option>
+                      {enterprises.map((ent) => (
+                        <option key={ent.id} value={ent.id}>
+                          {ent.name} ({ent.email})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Beneficiario y Factura */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-neutral-900 dark:text-neutral-50">
               <div className="space-y-4">

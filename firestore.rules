@@ -159,6 +159,24 @@ service cloud.firestore {
     match /collections/{id} {
       allow read, write: if isVerified();
     }
+    match /articles/{id} {
+      allow read, write: if isVerified();
+    }
+    match /warehouses/{id} {
+      allow read, write: if isVerified();
+    }
+    match /warehouse_inventory/{id} {
+      allow read, write: if isVerified();
+    }
+    match /transfers/{id} {
+      allow read, write: if isVerified();
+    }
+    match /loans_returns/{id} {
+      allow read, write: if isVerified();
+    }
+    match /inventory_sales/{id} {
+      allow read, write: if isVerified();
+    }
 
     match /checks/{id} {
       allow read: if isVerified();

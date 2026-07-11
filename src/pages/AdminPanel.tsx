@@ -71,14 +71,251 @@ export default function AdminPanel() {
 
   const isSuperAdmin = originalUser?.email === 'marcelogutama3eroa@gmail.com';
 
+  // Personal & Budget Migration Tool States
+  const [migrationEmployees, setMigrationEmployees] = useState<any[]>([]);
+  const [selectedMigrationEmployee, setSelectedMigrationEmployee] = useState<string>('');
+  const [selectedMigrationTargetEnterprise, setSelectedMigrationTargetEnterprise] = useState<string>('');
+  const [migrating, setMigrating] = useState(false);
+  const [migrationStats, setMigrationStats] = useState<{ budgets: number, sales: number, collections: number } | null>(null);
+
+  // Checks/Expenses Migration to Almacenes Derick States
+  const [migratingChecks, setMigratingChecks] = useState(false);
+  const [unassignedChecksCount, setUnassignedChecksCount] = useState<number | null>(null);
+
   useEffect(() => {
     if (isSuperAdmin) {
       loadUsers();
       if (activeTab === 'AUDIT') loadAuditLogs();
       if (activeTab === 'TRASH') loadTrashItems();
       if (activeTab === 'HISTORY') loadDynamicVersions();
+      if (activeTab === 'ENTITIES') {
+        loadMigrationEmployees();
+        fetchUnassignedChecksCount();
+      }
     }
   }, [isSuperAdmin, activeTab]);
+
+  const fetchUnassignedChecksCount = async () => {
+    try {
+      const checksSnap = await getDocs(collection(db, 'checks'));
+      let unassigned = 0;
+      checksSnap.docs.forEach(doc => {
+        if (!doc.data().enterpriseId) {
+          unassigned++;
+        }
+      });
+      setUnassignedChecksCount(unassigned);
+    } catch (e) {
+      console.error("Error fetching unassigned checks:", e);
+    }
+  };
+
+  const handleMigrateChecksToDerick = async () => {
+    try {
+      setMigratingChecks(true);
+      // 1. Get Almacenes Derick
+      const usersQ = query(collection(db, 'users'), where('role', '==', 'enterprise'));
+      const usersSnap = await getDocs(usersQ);
+      let derickId = '';
+      
+      const enterprises = usersSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+      const derickUser = enterprises.find(u => 
+        u.name?.toLowerCase().includes('derick') || 
+        u.name?.toLowerCase().includes('deric') ||
+        u.email?.toLowerCase().includes('derick') ||
+        u.email?.toLowerCase().includes('deric')
+      );
+      
+      if (derickUser) {
+        derickId = derickUser.id;
+      } else if (enterprises.length > 0) {
+        derickId = enterprises[0].id;
+      }
+
+      if (!derickId) {
+        showToast('No se encontró ninguna empresa "Almacenes Derick" ni ninguna otra empresa principal para la migración.', 'error');
+        return;
+      }
+
+      const derickName = derickUser ? derickUser.name : 'Primera Empresa Registrada';
+
+      if (await showConfirm('Confirmar Migración de Egresos', `¿Desea migrar automáticamente todos los cheques, egresos, facturas y beneficiarios sin empresa asignada a "${derickName}"?`, { type: 'warning' })) {
+        let checksCount = 0;
+        const checksSnap = await getDocs(collection(db, 'checks'));
+        for (const checkDoc of checksSnap.docs) {
+          const data = checkDoc.data();
+          if (!data.enterpriseId) {
+            await updateDoc(doc(db, 'checks', checkDoc.id), {
+              enterpriseId: derickId
+            });
+            checksCount++;
+          }
+        }
+
+        let invoicesCount = 0;
+        const invoicesSnap = await getDocs(collection(db, 'invoices'));
+        for (const invoiceDoc of invoicesSnap.docs) {
+          const data = invoiceDoc.data();
+          if (!data.enterpriseId) {
+            await updateDoc(doc(db, 'invoices', invoiceDoc.id), {
+              enterpriseId: derickId
+            });
+            invoicesCount++;
+          }
+        }
+
+        let beneficiariesCount = 0;
+        const beneficiariesSnap = await getDocs(collection(db, 'beneficiaries'));
+        for (const benDoc of beneficiariesSnap.docs) {
+          const data = benDoc.data();
+          if (!data.enterpriseId) {
+            await updateDoc(doc(db, 'beneficiaries', benDoc.id), {
+              enterpriseId: derickId
+            });
+            beneficiariesCount++;
+          }
+        }
+
+        logAudit(
+          AuditAction.SETTINGS_UPDATE, 
+          `MIGRACIÓN DE EGRESOS: Se migraron ${checksCount} cheques, ${invoicesCount} facturas y ${beneficiariesCount} beneficiarios sin empresa asignada a la empresa "${derickName}" (ID: ${derickId}).`
+        );
+
+        showToast(`Migración completada con éxito. Se migraron ${checksCount} cheques a "${derickName}".`, 'success');
+        fetchUnassignedChecksCount();
+      }
+    } catch (err: any) {
+      console.error("Error migrando cheques:", err);
+      showToast('Error al migrar cheques y egresos: ' + err.message, 'error');
+    } finally {
+      setMigratingChecks(false);
+    }
+  };
+
+  const loadMigrationEmployees = async () => {
+    try {
+      const q = query(collection(db, 'employees'));
+      const snap = await getDocs(q);
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as any);
+      list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      setMigrationEmployees(list);
+    } catch (e) {
+      console.error("Error cargando empleados para migración:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedMigrationEmployee) {
+      fetchMigrationStats(selectedMigrationEmployee);
+    } else {
+      setMigrationStats(null);
+    }
+  }, [selectedMigrationEmployee]);
+
+  const fetchMigrationStats = async (empId: string) => {
+    try {
+      const budgetsQ = query(collection(db, 'budgets'), where('employeeId', '==', empId));
+      const budgetsSnap = await getDocs(budgetsQ);
+      
+      const salesQ = query(collection(db, 'sales'), where('employeeId', '==', empId));
+      const salesSnap = await getDocs(salesQ);
+
+      const collsQ = query(collection(db, 'collections'), where('employeeId', '==', empId));
+      const collsSnap = await getDocs(collsQ);
+
+      setMigrationStats({
+        budgets: budgetsSnap.size,
+        sales: salesSnap.size,
+        collections: collsSnap.size
+      });
+    } catch (e) {
+      console.error("Error calculando estadísticas de migración:", e);
+    }
+  };
+
+  const handleExecuteMigration = async () => {
+    if (!selectedMigrationEmployee || !selectedMigrationTargetEnterprise) {
+      showToast('Por favor, seleccione un empleado y una empresa de destino.', 'error');
+      return;
+    }
+
+    const emp = migrationEmployees.find(e => e.id === selectedMigrationEmployee);
+    const targetCompany = users.find(u => u.id === selectedMigrationTargetEnterprise);
+
+    if (!emp || !targetCompany) return;
+
+    const confirmMsg = `¿Está seguro de migrar al empleado "${emp.name} ${emp.lastName}" a la empresa "${targetCompany.name}"?\n\n` +
+      `Esto actualizará:\n` +
+      `- El empleado asignado\n` +
+      `- ${migrationStats?.budgets || 0} presupuestos mensuales asociados\n` +
+      `- ${migrationStats?.sales || 0} ventas registradas\n` +
+      `- ${migrationStats?.collections || 0} cobranzas registradas\n\n` +
+      `Toda esta información pasará a pertenecer a la empresa de destino. Esta acción no se puede deshacer de forma automática.`;
+
+    if (await showConfirm('Confirmar Migración Integral', confirmMsg, { type: 'warning' })) {
+      try {
+        setMigrating(true);
+        setLoading(true);
+        
+        // 1. Update Employee enterpriseId
+        await updateDoc(doc(db, 'employees', selectedMigrationEmployee), {
+          enterpriseId: selectedMigrationTargetEnterprise
+        });
+
+        // 2. Update Budgets enterpriseId
+        const budgetsQ = query(collection(db, 'budgets'), where('employeeId', '==', selectedMigrationEmployee));
+        const budgetsSnap = await getDocs(budgetsQ);
+        const budgetPromises = budgetsSnap.docs.map(d => 
+          updateDoc(doc(db, 'budgets', d.id), {
+            enterpriseId: selectedMigrationTargetEnterprise
+          })
+        );
+        await Promise.all(budgetPromises);
+
+        // 3. Update Sales enterpriseId
+        const salesQ = query(collection(db, 'sales'), where('employeeId', '==', selectedMigrationEmployee));
+        const salesSnap = await getDocs(salesQ);
+        const salesPromises = salesSnap.docs.map(d => 
+          updateDoc(doc(db, 'sales', d.id), {
+            enterpriseId: selectedMigrationTargetEnterprise
+          })
+        );
+        await Promise.all(salesPromises);
+
+        // 4. Update Collections enterpriseId
+        const collsQ = query(collection(db, 'collections'), where('employeeId', '==', selectedMigrationEmployee));
+        const collsSnap = await getDocs(collsQ);
+        const collsPromises = collsSnap.docs.map(d => 
+          updateDoc(doc(db, 'collections', d.id), {
+            enterpriseId: selectedMigrationTargetEnterprise
+          })
+        );
+        await Promise.all(collsPromises);
+
+        // Log audit
+        logAudit(
+          AuditAction.SETTINGS_UPDATE, 
+          `MIGRACIÓN INTEGRAL: Empleado ${emp.name} ${emp.lastName} migrado a la empresa ${targetCompany.name} (UID: ${selectedMigrationTargetEnterprise}) junto con sus ${budgetsSnap.size} presupuestos, ${salesSnap.size} ventas y ${collsSnap.size} cobranzas.`
+        );
+
+        showToast('Migración integral ejecutada con éxito', 'success');
+        
+        // Reset state
+        setSelectedMigrationEmployee('');
+        setSelectedMigrationTargetEnterprise('');
+        setMigrationStats(null);
+        
+        // Reload list
+        loadMigrationEmployees();
+      } catch (err: any) {
+        console.error("Error durante la migración integral:", err);
+        showToast('Error al ejecutar la migración', 'error');
+      } finally {
+        setMigrating(false);
+        setLoading(false);
+      }
+    }
+  };
 
   const loadDynamicVersions = async () => {
     setLoading(false); // don't block the whole page with global loading spinner
@@ -1223,7 +1460,7 @@ export default function AdminPanel() {
       {activeTab === 'ENTITIES' && (
         <div className="space-y-8 animate-in fade-in duration-500">
           {/* Header Action cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="bg-white dark:bg-neutral-900 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 p-8 shadow-sm flex flex-col justify-between">
               <div>
                 <span className="px-3 py-1 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 text-[10px] font-black uppercase tracking-widest rounded-full">Herramienta de Control</span>
@@ -1242,6 +1479,30 @@ export default function AdminPanel() {
                   className="px-6 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer flex items-center gap-2"
                 >
                   <ShieldCheck className="w-4 h-4" /> Ejecutar Migración de Roles
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-neutral-900 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 p-8 shadow-sm flex flex-col justify-between">
+              <div>
+                <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase tracking-widest rounded-full">Gastos y Egresos</span>
+                <h3 className="text-xl font-bold text-neutral-900 dark:text-neutral-50 mt-3">Vincular Cheques a Almacenes Derick</h3>
+                <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-2 leading-relaxed">
+                  Todos los cheques, facturas y beneficiarios históricos que se encuentran actualmente sin empresa asociada se vincularán automáticamente a la empresa **Almacenes Derick**.
+                </p>
+                {unassignedChecksCount !== null && (
+                  <div className="mt-3 text-xs font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-950/30 px-3 py-2 rounded-xl w-fit">
+                    Cheques pendientes de vincular: {unassignedChecksCount}
+                  </div>
+                )}
+              </div>
+              <div className="mt-6">
+                <button
+                  onClick={handleMigrateChecksToDerick}
+                  disabled={migratingChecks}
+                  className="px-6 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                >
+                  <Clock className="w-4 h-4" /> {migratingChecks ? "Migrando..." : "Migrar Egresos a Derick"}
                 </button>
               </div>
             </div>
@@ -1277,6 +1538,99 @@ export default function AdminPanel() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Herramienta de Migración Integral de Datos */}
+          <div className="bg-white dark:bg-neutral-900 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 p-8 lg:p-10 shadow-sm space-y-6">
+            <div>
+              <span className="px-3 py-1 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 text-[10px] font-black uppercase tracking-widest rounded-full">Super Admin Console</span>
+              <h3 className="text-xl font-bold text-neutral-900 dark:text-neutral-50 mt-3">Migración Integral de Personal, Presupuestos y Ventas</h3>
+              <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1 leading-relaxed">
+                Herramienta crítica para transferir un empleado junto con todos sus registros históricos de ventas, cobranzas y presupuestos asignados hacia otra empresa.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-end">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] block pl-1">Seleccionar Empleado</label>
+                <select
+                  value={selectedMigrationEmployee}
+                  onChange={(e) => setSelectedMigrationEmployee(e.target.value)}
+                  className="w-full bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl p-4 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-neutral-50 font-bold"
+                >
+                  <option value="">-- Seleccionar Empleado --</option>
+                  {migrationEmployees.map((emp) => {
+                    const currentEnt = users.find(u => u.id === emp.enterpriseId);
+                    return (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.name} {emp.lastName} ({currentEnt ? currentEnt.name : 'Sin Empresa'})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] block pl-1">Empresa de Destino</label>
+                <select
+                  value={selectedMigrationTargetEnterprise}
+                  onChange={(e) => setSelectedMigrationTargetEnterprise(e.target.value)}
+                  className="w-full bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl p-4 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-neutral-50 font-bold"
+                >
+                  <option value="">-- Seleccionar Empresa de Destino --</option>
+                  {users
+                    .filter(u => u.role === 'enterprise')
+                    .map((ent) => (
+                      <option key={ent.id} value={ent.id}>
+                        {ent.name} ({ent.email})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div>
+                <button
+                  onClick={handleExecuteMigration}
+                  disabled={migrating || !selectedMigrationEmployee || !selectedMigrationTargetEnterprise}
+                  className={cn(
+                    "w-full px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2",
+                    (!selectedMigrationEmployee || !selectedMigrationTargetEnterprise)
+                      ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-600 cursor-not-allowed shadow-none"
+                      : "bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer"
+                  )}
+                >
+                  <AlertTriangle className="w-4 h-4" /> {migrating ? "Migrando Datos..." : "Ejecutar Migración"}
+                </button>
+              </div>
+            </div>
+
+            {selectedMigrationEmployee && (
+              <div className="p-6 bg-indigo-50/40 dark:bg-indigo-950/20 rounded-[1.5rem] border border-indigo-100/50 dark:border-indigo-900/40 space-y-3 animate-in fade-in duration-300 font-sans">
+                <div className="text-[10px] font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">
+                  Registros listos para transferir:
+                </div>
+                {migrationStats ? (
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="p-3 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800/60 shadow-sm">
+                      <span className="text-[10px] text-neutral-400 font-bold uppercase block">Presupuestos</span>
+                      <span className="text-lg font-black text-neutral-900 dark:text-neutral-50 mt-1 block">{migrationStats.budgets}</span>
+                    </div>
+                    <div className="p-3 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800/60 shadow-sm">
+                      <span className="text-[10px] text-neutral-400 font-bold uppercase block">Ventas</span>
+                      <span className="text-lg font-black text-neutral-900 dark:text-neutral-50 mt-1 block">{migrationStats.sales}</span>
+                    </div>
+                    <div className="p-3 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800/60 shadow-sm">
+                      <span className="text-[10px] text-neutral-400 font-bold uppercase block">Cobranzas</span>
+                      <span className="text-lg font-black text-neutral-900 dark:text-neutral-50 mt-1 block">{migrationStats.collections}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-neutral-400 font-bold uppercase tracking-wider animate-pulse py-2">
+                    Calculando registros...
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Main List Table */}

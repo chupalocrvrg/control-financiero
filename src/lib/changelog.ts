@@ -10,6 +10,15 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: '4.1.0',
+    date: '2026-07-11',
+    changes: [
+      'Validaciones de Reversión de Stock: Optimización matemática que impide saldos negativos durante la reversión de transferencias, ventas y préstamos, limitando la cantidad revertida al stock disponible real de forma segura.',
+      'Sincronización y Búsqueda Predictiva: Integración de listas de autocompletado inteligente (datalists) en tiempo real para bodegas, clientes, asignados y encargados de préstamos en toda la interfaz de inventario.',
+      'Sincronización de Versión Unificada: Conversión de las etiquetas de versión a una constante dinámica global importada, eliminando referencias estáticas duplicadas en la UI.'
+    ]
+  },
+  {
     version: '4.0.0',
     date: '2026-07-10',
     changes: [

@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../../firebase';
 import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNotification } from '../../contexts/NotificationContext';
 import { Warehouse, Article, WarehouseInventory, LoanReturn } from '../../types/inventory';
-import { executeLoanReturn } from '../../lib/inventory-db';
-import { ShoppingBag, AlertTriangle, Plus, Trash2, Calendar, FileText, Check, Search, User, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { executeLoanReturn, revertLoanReturn } from '../../lib/inventory-db';
+import { ShoppingBag, AlertTriangle, Plus, Trash2, Calendar, FileText, Check, Search, User, ArrowUpRight, ArrowDownLeft, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../../lib/utils';
 
@@ -15,6 +16,7 @@ interface LoanReturnItemRow {
 
 export default function LoansReturnsTab() {
   const { user, profile } = useAuth();
+  const { showToast, showConfirm } = useNotification();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [inventories, setInventories] = useState<WarehouseInventory[]>([]);
@@ -38,6 +40,11 @@ export default function LoansReturnsTab() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Revert states
+  const [revertModalOpen, setRevertModalOpen] = useState(false);
+  const [revertItemId, setRevertItemId] = useState<string | null>(null);
+  const [revertComment, setRevertComment] = useState('');
 
   const currentEnterpriseId = profile?.role === 'BODEGUERO' ? profile?.enterpriseId : user?.uid;
 
@@ -211,6 +218,36 @@ export default function LoansReturnsTab() {
     }
   };
 
+  const handleDeleteLoanReturn = (logId: string) => {
+    setRevertItemId(logId);
+    setRevertComment('');
+    setRevertModalOpen(true);
+  };
+
+  const handleConfirmRevertLoanReturn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!revertItemId) return;
+    if (!revertComment.trim()) {
+      showToast('Debe ingresar un motivo para la eliminación.', 'error');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      await revertLoanReturn(revertItemId, currentEnterpriseId || '', revertComment.trim());
+      showToast('Movimiento de préstamo/devolución eliminado y stock revertido correctamente.', 'success');
+      setRevertModalOpen(false);
+      setRevertItemId(null);
+      await fetchData();
+    } catch (err: any) {
+      console.error('Error deleting loan/return:', err);
+      showToast(err.message || 'Error al eliminar el movimiento.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const filteredSuggestions = predictiveHouses.filter(house =>
     house.toLowerCase().includes(commercialHouse.toLowerCase()) &&
     house.toLowerCase() !== commercialHouse.toLowerCase()
@@ -225,6 +262,8 @@ export default function LoansReturnsTab() {
       return '';
     }
   };
+
+  const uniquePersonNames = Array.from(new Set(logs.map(log => log.personName).filter(Boolean))).sort() as string[];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -376,12 +415,18 @@ export default function LoansReturnsTab() {
               <input
                 type="text"
                 required
+                list="persons-list"
                 placeholder="Ej. Carlos Mendoza"
                 value={personName}
                 onChange={(e) => setPersonName(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 text-neutral-900 dark:text-neutral-50 uppercase font-bold"
               />
               <User className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <datalist id="persons-list">
+                {uniquePersonNames.map(name => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
             </div>
           </div>
 
@@ -498,83 +543,178 @@ export default function LoansReturnsTab() {
           </div>
         ) : (
           <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
-            {logs.map(log => (
-              <div 
-                key={log.id}
-                className="bg-neutral-50 dark:bg-neutral-800/20 rounded-2xl border border-neutral-100 dark:border-neutral-800 p-5 space-y-4 shadow-sm"
-              >
-                {/* Meta Header */}
-                <div className="flex flex-wrap justify-between items-start gap-2 border-b border-neutral-100 dark:border-neutral-800 pb-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className={cn(
-                        "px-2.5 py-0.5 text-[9px] font-black rounded-full uppercase tracking-widest flex items-center gap-1",
-                        log.type === 'LOAN'
-                          ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400"
-                          : "bg-orange-50 dark:bg-orange-950/20 text-orange-600 dark:text-orange-400"
-                      )}>
-                        {log.type === 'LOAN' ? 'INGRESO (PRÉSTAMO)' : 'EGRESO (DEVOLUCIÓN)'}
-                      </span>
-                      {log.isDirectSale && (
-                        <span className="px-2.5 py-0.5 text-[9px] font-black rounded-full uppercase tracking-widest bg-purple-50 dark:bg-purple-950/20 text-purple-600 dark:text-purple-400">
-                          Venta Directa
-                        </span>
-                      )}
-                      <span className="text-xs text-neutral-400 font-mono">ID: {log.id.substring(0, 8)}</span>
-                    </div>
-                    <div className="text-xs font-black text-neutral-900 dark:text-neutral-100 uppercase tracking-tight">
-                      Casa Comercial: <strong className="text-indigo-600 dark:text-indigo-400">{log.commercialHouse}</strong>
-                    </div>
-                    <div className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-tight">
-                      {log.isDirectSale ? 'Entregado directamente al cliente' : `Almacenamiento: ${log.warehouseName}`}
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-1 text-[10px] text-neutral-400 font-bold uppercase tracking-tight">
-                    <Calendar className="w-3.5 h-3.5" />
-                    {safeFormatDate(log.timestamp)}
-                  </div>
-                </div>
-
-                {/* Articles List */}
-                <div className="space-y-1.5">
-                  <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest block">Artículos</span>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {log.articles.map((art, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2.5 bg-white dark:bg-neutral-950 border border-neutral-100 dark:border-neutral-800 rounded-xl text-xs">
-                        <div className="truncate pr-2">
-                          <span className="font-bold text-neutral-800 dark:text-neutral-200 uppercase block truncate">{art.name}</span>
-                          {art.series && <span className="text-[9px] font-mono text-neutral-400 uppercase">S/N: {art.series}</span>}
-                        </div>
+            {logs.map(log => {
+              const isDeleted = log.status === 'ELIMINADO';
+              return (
+                <div 
+                  key={log.id}
+                  className={cn(
+                    "rounded-2xl border p-5 space-y-4 shadow-sm transition-all",
+                    isDeleted
+                      ? "bg-red-50/10 dark:bg-red-950/5 border-red-200/50 dark:border-red-900/30 opacity-75"
+                      : "bg-neutral-50 dark:bg-neutral-800/20 border-neutral-100 dark:border-neutral-800"
+                  )}
+                >
+                  {/* Meta Header */}
+                  <div className="flex flex-wrap justify-between items-start gap-2 border-b border-neutral-100 dark:border-neutral-800 pb-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
                         <span className={cn(
-                          "px-2 py-1 font-black rounded-lg text-[10px]",
+                          "px-2.5 py-0.5 text-[9px] font-black rounded-full uppercase tracking-widest flex items-center gap-1",
                           log.type === 'LOAN'
-                            ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
-                            : "bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"
+                            ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400"
+                            : "bg-orange-50 dark:bg-orange-950/20 text-orange-600 dark:text-orange-400"
                         )}>
-                          {art.quantity} uds
+                          {log.type === 'LOAN' ? 'INGRESO (PRÉSTAMO)' : 'EGRESO (DEVOLUCIÓN)'}
                         </span>
+                        {log.isDirectSale && (
+                          <span className="px-2.5 py-0.5 text-[9px] font-black rounded-full uppercase tracking-widest bg-purple-50 dark:bg-purple-950/20 text-purple-600 dark:text-purple-400">
+                            Venta Directa
+                          </span>
+                        )}
+                        {isDeleted && (
+                          <span className="px-2.5 py-0.5 text-[9px] font-black bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 rounded-full uppercase tracking-widest animate-pulse">
+                            ELIMINADO / REVERTIDO
+                          </span>
+                        )}
+                        <span className="text-xs text-neutral-400 font-mono">ID: {log.id.substring(0, 8)}</span>
                       </div>
-                    ))}
+                      <div className={cn(
+                        "text-xs font-black uppercase tracking-tight",
+                        isDeleted ? "text-neutral-500 line-through" : "text-neutral-900 dark:text-neutral-100"
+                      )}>
+                        Casa Comercial: <strong className="text-indigo-600 dark:text-indigo-400">{log.commercialHouse}</strong>
+                      </div>
+                      <div className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-tight">
+                        {log.isDirectSale ? 'Entregado directamente al cliente' : `Almacenamiento: ${log.warehouseName}`}
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-1 text-[10px] text-neutral-400 font-bold uppercase tracking-tight">
+                      <Calendar className="w-3.5 h-3.5" />
+                      {safeFormatDate(log.timestamp)}
+                    </div>
                   </div>
-                </div>
 
-                {/* Operator/Responsable */}
-                <div className="flex justify-between items-center text-xs border-t border-neutral-100 dark:border-neutral-800 pt-3">
-                  <span className="text-neutral-400 font-bold uppercase text-[9px]">Persona Responsable:</span>
-                  <strong className="text-neutral-700 dark:text-neutral-200 uppercase">{log.personName}</strong>
-                </div>
+                  {/* Articles List */}
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest block">Artículos</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {log.articles.map((art, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-2.5 bg-white dark:bg-neutral-950 border border-neutral-100 dark:border-neutral-800 rounded-xl text-xs">
+                          <div className="truncate pr-2">
+                            <span className={cn(
+                              "font-bold uppercase block truncate",
+                              isDeleted ? "text-neutral-400 line-through" : "text-neutral-800 dark:text-neutral-200"
+                            )}>{art.name}</span>
+                            {art.series && <span className="text-[9px] font-mono text-neutral-400 uppercase">S/N: {art.series}</span>}
+                          </div>
+                          <span className={cn(
+                            "px-2 py-1 font-black rounded-lg text-[10px]",
+                            isDeleted
+                              ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-400"
+                              : log.type === 'LOAN'
+                                ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
+                                : "bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"
+                          )}>
+                            {art.quantity} uds
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
-                {/* Comment Section */}
-                <div className="p-3.5 bg-neutral-100 dark:bg-neutral-800/40 rounded-xl text-xs text-neutral-600 dark:text-neutral-300">
-                  <p className="font-bold uppercase text-[9px] text-neutral-400 mb-1">Comentario / Motivo</p>
-                  <p className="font-medium leading-relaxed">{log.comment}</p>
+                  {/* Operator/Responsable */}
+                  <div className="flex justify-between items-center text-xs border-t border-neutral-100 dark:border-neutral-800 pt-3">
+                    <span className="text-neutral-400 font-bold uppercase text-[9px]">Persona Responsable:</span>
+                    <strong className="text-neutral-700 dark:text-neutral-200 uppercase">{log.personName}</strong>
+                  </div>
+
+                  {/* Comment Section */}
+                  <div className="p-3.5 bg-neutral-100 dark:bg-neutral-800/40 rounded-xl text-xs text-neutral-600 dark:text-neutral-300">
+                    <p className="font-bold uppercase text-[9px] text-neutral-400 mb-1">Comentario / Motivo</p>
+                    <p className="font-medium leading-relaxed">{log.comment}</p>
+                  </div>
+
+                  {/* Revert Reason / Revert Action */}
+                  {isDeleted ? (
+                    <div className="p-3.5 bg-red-50/50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-xl text-xs text-red-600 dark:text-red-400">
+                      <p className="font-bold uppercase text-[9px] mb-1">Motivo de Eliminación</p>
+                      <p className="font-semibold leading-relaxed">{log.revertReason || 'Sin motivo registrado'}</p>
+                    </div>
+                  ) : (
+                    <div className="flex justify-end pt-1">
+                      <button
+                        onClick={() => handleDeleteLoanReturn(log.id)}
+                        className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/10 px-3 py-1.5 rounded-xl transition-all"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Eliminar Movimiento
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
+
+      {/* Revert Reason Modal */}
+      {revertModalOpen && (
+        <div className="fixed inset-0 bg-neutral-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-neutral-900 rounded-[2.5rem] border border-neutral-200 dark:border-neutral-800 max-w-md w-full overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="px-8 py-6 border-b border-neutral-100 dark:border-neutral-800 bg-red-600 text-white flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <Trash2 className="w-5 h-5" />
+                <h3 className="text-lg font-black uppercase tracking-tight">Eliminar Movimiento</h3>
+              </div>
+              <button 
+                onClick={() => setRevertModalOpen(false)}
+                className="p-1 hover:bg-red-700 rounded-full text-white/85 hover:text-white transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmRevertLoanReturn} className="p-8 space-y-4">
+              <p className="text-xs text-neutral-500 font-medium leading-relaxed">
+                Esta acción revertirá los saldos de los artículos (restando o sumando stock según corresponda) y marcará este movimiento como <strong className="text-red-600 dark:text-red-400 font-bold">ELIMINADO / REVERTIDO</strong> en el log de préstamos/devoluciones.
+              </p>
+
+              <div>
+                <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">
+                  Motivo o Razón de la Eliminación *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  placeholder="Ej. Error en la cantidad asignada originalmente."
+                  value={revertComment}
+                  onChange={(e) => setRevertComment(e.target.value)}
+                  className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/10 text-neutral-900 dark:text-neutral-50 transition-all"
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end pt-4">
+                <button
+                  type="button"
+                  onClick={() => setRevertModalOpen(false)}
+                  className="px-5 py-2.5 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all"
+                >
+                  Sí, revertir y eliminar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

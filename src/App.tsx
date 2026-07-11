@@ -5,6 +5,7 @@ import { SettingsProvider } from './contexts/SettingsContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import Layout from './components/Layout';
 import SecurityGuard from './components/SecurityGuard';
+import { CURRENT_VERSION } from './lib/changelog';
 
 const Login = lazy(() => import('./pages/Login'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
@@ -23,7 +24,7 @@ const LoadingFallback = () => (
   <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-8 text-center">
     <div className="w-16 h-16 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin mb-6" />
     <h2 className="text-xl font-bold text-white tracking-widest uppercase">Cargando Módulo</h2>
-    <p className="text-neutral-500 text-sm mt-2 font-medium">Control Financiero • v3.1.5</p>
+    <p className="text-neutral-500 text-sm mt-2 font-medium">Control Financiero • v{CURRENT_VERSION}</p>
   </div>
 );
 

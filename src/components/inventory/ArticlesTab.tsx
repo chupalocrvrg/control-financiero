@@ -21,8 +21,12 @@ export default function ArticlesTab() {
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
   const [formData, setFormData] = useState({
     name: '',
+    category: '',
+    brand: '',
+    model: '',
     series: '',
-    minStockAlert: 0,
+    barcode: '',
+    minStockAlert: 5,
     initialQuantity: 0,
     initialWarehouseId: ''
   });
@@ -68,7 +72,11 @@ export default function ArticlesTab() {
       setEditingArticle(article);
       setFormData({
         name: article.name,
+        category: article.category || '',
+        brand: article.brand || '',
+        model: article.model || '',
         series: article.series || '',
+        barcode: article.barcode || '',
         minStockAlert: article.minStockAlert,
         initialQuantity: article.quantity,
         initialWarehouseId: '' // No initial warehouse edit after creation
@@ -77,7 +85,11 @@ export default function ArticlesTab() {
       setEditingArticle(null);
       setFormData({
         name: '',
+        category: '',
+        brand: '',
+        model: '',
         series: '',
+        barcode: '',
         minStockAlert: 5, // reasonable default alert threshold
         initialQuantity: 0,
         initialWarehouseId: warehouses[0]?.id || ''
@@ -95,8 +107,28 @@ export default function ArticlesTab() {
       return;
     }
 
+    if (!formData.category.trim()) {
+      setError('La categoría es obligatoria.');
+      return;
+    }
+
+    if (!formData.brand.trim()) {
+      setError('La marca es obligatoria.');
+      return;
+    }
+
+    if (!formData.model.trim()) {
+      setError('El modelo es obligatorio.');
+      return;
+    }
+
     if (formData.minStockAlert < 0) {
       setError('El umbral de alerta debe ser un número igual o mayor a 0.');
+      return;
+    }
+
+    if (!editingArticle && !formData.initialWarehouseId) {
+      setError('Debe seleccionar la bodega de destino inicial obligatoriamente.');
       return;
     }
 
@@ -109,7 +141,11 @@ export default function ArticlesTab() {
         const artRef = doc(db, 'articles', editingArticle.id);
         await updateDoc(artRef, {
           name: formData.name.trim(),
+          category: formData.category.trim(),
+          brand: formData.brand.trim(),
+          model: formData.model.trim(),
           series: formData.series.trim(),
+          barcode: formData.barcode.trim(),
           minStockAlert: Number(formData.minStockAlert)
         });
       } else {
@@ -119,31 +155,30 @@ export default function ArticlesTab() {
         
         const newArticle = {
           name: formData.name.trim(),
+          category: formData.category.trim(),
+          brand: formData.brand.trim(),
+          model: formData.model.trim(),
           series: formData.series.trim(),
+          barcode: formData.barcode.trim(),
           minStockAlert: Number(formData.minStockAlert),
-          quantity: 0, // Starts at 0, updated below via initial assignment if applicable
+          quantity: Number(formData.initialQuantity || 0),
           userId: currentEnterpriseId,
           createdAt: Timestamp.now()
         };
 
         batch.set(artRef, newArticle);
 
-        // If there is an initial quantity, allocate it to a warehouse
-        if (formData.initialQuantity > 0 && formData.initialWarehouseId) {
-          const invId = `${formData.initialWarehouseId}_${artRef.id}`;
-          const invRef = doc(db, 'warehouse_inventory', invId);
-          
-          batch.set(invRef, {
-            id: invId,
-            warehouseId: formData.initialWarehouseId,
-            articleId: artRef.id,
-            quantity: Number(formData.initialQuantity),
-            userId: currentEnterpriseId
-          });
-
-          // Set global quantity on the article
-          batch.update(artRef, { quantity: Number(formData.initialQuantity) });
-        }
+        // Always create a warehouse_inventory record for the selected warehouse, even if quantity is 0
+        const invId = `${formData.initialWarehouseId}_${artRef.id}`;
+        const invRef = doc(db, 'warehouse_inventory', invId);
+        
+        batch.set(invRef, {
+          id: invId,
+          warehouseId: formData.initialWarehouseId,
+          articleId: artRef.id,
+          quantity: Number(formData.initialQuantity || 0),
+          userId: currentEnterpriseId
+        });
 
         await batch.commit();
       }
@@ -184,9 +219,16 @@ export default function ArticlesTab() {
     }
   };
 
+  const uniqueCategories = Array.from(new Set(articles.map(a => a.category).filter(Boolean))).sort() as string[];
+  const uniqueBrands = Array.from(new Set(articles.map(a => a.brand).filter(Boolean))).sort() as string[];
+  const uniqueModels = Array.from(new Set(articles.map(a => a.model).filter(Boolean))).sort() as string[];
+
   const filteredArticles = articles.filter(art => 
     art.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (art.series && art.series.toLowerCase().includes(searchTerm.toLowerCase()))
+    (art.series && art.series.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (art.category && art.category.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (art.brand && art.brand.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (art.model && art.model.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -267,6 +309,28 @@ export default function ArticlesTab() {
                           </div>
                           <div>
                             <span className="text-sm font-bold text-neutral-950 dark:text-neutral-50 uppercase tracking-tight block">{art.name}</span>
+                            <div className="flex flex-wrap gap-1.5 mt-1 text-[10px]">
+                              {art.category && (
+                                <span className="bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-bold uppercase px-1.5 py-0.5 rounded">
+                                  {art.category}
+                                </span>
+                              )}
+                              {art.brand && (
+                                <span className="bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 font-bold uppercase px-1.5 py-0.5 rounded">
+                                  {art.brand}
+                                </span>
+                              )}
+                              {art.model && (
+                                <span className="bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 font-bold uppercase px-1.5 py-0.5 rounded">
+                                  {art.model}
+                                </span>
+                              )}
+                              {art.barcode && (
+                                <span className="bg-neutral-100 dark:bg-neutral-800 text-neutral-500 font-mono px-1.5 py-0.5 rounded">
+                                  || {art.barcode}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -333,8 +397,8 @@ export default function ArticlesTab() {
 
       {/* Create/Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-neutral-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-250">
-          <div className="bg-white dark:bg-neutral-900 rounded-[2.5rem] border border-neutral-200 dark:border-neutral-800 max-w-lg w-full overflow-hidden shadow-2xl animate-in zoom-in-95 duration-250">
+        <div className="fixed inset-0 bg-neutral-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-neutral-900 rounded-[2.5rem] border border-neutral-200 dark:border-neutral-800 max-w-xl w-full overflow-hidden shadow-2xl my-8 animate-in zoom-in-95 duration-200">
             <div className="px-8 py-6 border-b border-neutral-100 dark:border-neutral-800 bg-indigo-600 text-white flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <Package className="w-5 h-5" />
@@ -351,69 +415,158 @@ export default function ArticlesTab() {
             </div>
 
             <form onSubmit={handleSubmit} className="p-8 space-y-6">
+              {error && (
+                <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-2xl text-red-600 dark:text-red-400 text-xs font-semibold flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
               <div className="space-y-4">
+                {/* Nombre del Artículo */}
                 <div>
                   <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Nombre del Artículo *</label>
                   <input
                     type="text"
                     required
-                    placeholder="Ej. Televisor y nubes de 32"
+                    placeholder="Ej. Cocina de Inducción, Parlante Bluetooth, Nevera"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all uppercase"
                   />
                 </div>
 
-                <div>
-                  <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Número de Serie (Opcional)</label>
-                  <input
-                    type="text"
-                    placeholder="Ej. SN-3948572"
-                    value={formData.series}
-                    onChange={(e) => setFormData({ ...formData, series: e.target.value })}
-                    className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all uppercase"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Categoría (Predictivo) */}
+                  <div>
+                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Categoría *</label>
+                    <input
+                      type="text"
+                      required
+                      list="categories-list"
+                      placeholder="Ej. Cocinas, Parlantes, Neveras..."
+                      value={formData.category}
+                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                      className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all uppercase"
+                    />
+                    <datalist id="categories-list">
+                      {uniqueCategories.map(cat => (
+                        <option key={cat} value={cat} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  {/* Marca (Predictivo) */}
+                  <div>
+                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Marca *</label>
+                    <input
+                      type="text"
+                      required
+                      list="brands-list"
+                      placeholder="Ej. Samsung, LG, Indurama..."
+                      value={formData.brand}
+                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                      className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all uppercase"
+                    />
+                    <datalist id="brands-list">
+                      {uniqueBrands.map(brand => (
+                        <option key={brand} value={brand} />
+                      ))}
+                    </datalist>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Mínimo de Stock para Alerta *</label>
-                  <input
-                    type="number"
-                    required
-                    min={0}
-                    placeholder="Ej. 5"
-                    value={formData.minStockAlert}
-                    onChange={(e) => setFormData({ ...formData, minStockAlert: Math.max(0, parseInt(e.target.value) || 0) })}
-                    className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all"
-                  />
-                  <p className="text-[10px] text-neutral-400 font-medium mt-1">Obligatorio. El sistema disparará una alerta si el stock cae por debajo de esta cantidad.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Modelo (Predictivo) */}
+                  <div>
+                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Modelo *</label>
+                    <input
+                      type="text"
+                      required
+                      list="models-list"
+                      placeholder="Ej. Premium Class X, EcoPlus..."
+                      value={formData.model}
+                      onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                      className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all uppercase"
+                    />
+                    <datalist id="models-list">
+                      {uniqueModels.map(model => (
+                        <option key={model} value={model} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  {/* Código de barras (Opcional) */}
+                  <div>
+                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Código de Barras (Opcional)</label>
+                    <input
+                      type="text"
+                      placeholder="Escanee o digite código"
+                      value={formData.barcode}
+                      onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                      className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all uppercase font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Número de Serie */}
+                  <div>
+                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Número de Serie (Opcional)</label>
+                    <input
+                      type="text"
+                      placeholder="Ej. SN-3948572"
+                      value={formData.series}
+                      onChange={(e) => setFormData({ ...formData, series: e.target.value })}
+                      className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all uppercase"
+                    />
+                  </div>
+
+                  {/* Stock Mínimo Alerta */}
+                  <div>
+                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Mínimo para Alerta *</label>
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      placeholder="Ej. 5"
+                      value={formData.minStockAlert}
+                      onChange={(e) => setFormData({ ...formData, minStockAlert: Math.max(0, parseInt(e.target.value) || 0) })}
+                      className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all"
+                    />
+                  </div>
                 </div>
 
                 {!editingArticle && warehouses.length > 0 && (
-                  <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800 space-y-4">
-                    <h4 className="text-xs font-black text-neutral-500 uppercase tracking-wider">Asignación de Stock Inicial (Opcional)</h4>
+                  <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800 space-y-4 bg-neutral-50 dark:bg-neutral-800/20 p-4.5 rounded-2xl border border-neutral-100 dark:border-neutral-800/60">
+                    <div>
+                      <h4 className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Asignación Obligatoria de Bodega</h4>
+                      <p className="text-[10px] text-neutral-400 font-bold uppercase mt-0.5">Defina a qué bodega se ingresará inicialmente este nuevo artículo.</p>
+                    </div>
                     
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Cantidad Inicial</label>
+                        <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Stock Inicial *</label>
                         <input
                           type="number"
                           min={0}
+                          required
                           placeholder="0"
                           value={formData.initialQuantity}
                           onChange={(e) => setFormData({ ...formData, initialQuantity: Math.max(0, parseInt(e.target.value) || 0) })}
-                          className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all"
+                          className="w-full px-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all"
                         />
                       </div>
 
                       <div>
-                        <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Bodega Destino</label>
+                        <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Bodega Destino *</label>
                         <select
-                          disabled={formData.initialQuantity <= 0}
+                          required
                           value={formData.initialWarehouseId}
                           onChange={(e) => setFormData({ ...formData, initialWarehouseId: e.target.value })}
-                          className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all disabled:opacity-50"
+                          className="w-full px-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all"
                         >
+                          <option value="" disabled>Seleccione Bodega...</option>
                           {warehouses.map(wh => (
                             <option key={wh.id} value={wh.id}>{wh.name}</option>
                           ))}

@@ -22,6 +22,10 @@ import {
 } from 'lucide-react';
 import UpdatesNotification from './UpdatesNotification';
 import PWAPrompt from './PWAPrompt';
+import { useEffect } from 'react';
+import { db } from '../firebase';
+import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { CURRENT_VERSION } from '../lib/changelog';
 
 export default function Layout() {
   const { user, profile, loading, logout, isAdmin, impersonatedUser, impersonateUser, originalUser } = useAuth();
@@ -34,6 +38,82 @@ export default function Layout() {
   const toggleMenu = (menuName: string) => {
     setOpenMenus(prev => ({ ...prev, [menuName]: !prev[menuName] }));
   };
+
+  // Silent automatic migration of unassigned checks to Almacenes Derick on startup
+  useEffect(() => {
+    let active = true;
+    const runSilentMigration = async () => {
+      try {
+        // Query unassigned checks (checks with no enterpriseId)
+        const checksQ = query(collection(db, 'checks'));
+        const checksSnap = await getDocs(checksQ);
+        const unassignedChecks = checksSnap.docs.filter(d => !d.data().enterpriseId);
+        
+        if (unassignedChecks.length === 0) return;
+
+        // Get Almacenes Derick enterprise ID
+        const usersQ = query(collection(db, 'users'), where('role', '==', 'enterprise'));
+        const usersSnap = await getDocs(usersQ);
+        const enterprises = usersSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+        const derickUser = enterprises.find(u => 
+          u.name?.toLowerCase().includes('derick') || 
+          u.name?.toLowerCase().includes('deric') ||
+          u.email?.toLowerCase().includes('derick') ||
+          u.email?.toLowerCase().includes('deric')
+        );
+        
+        let targetId = '';
+        if (derickUser) {
+          targetId = derickUser.id;
+        } else if (enterprises.length > 0) {
+          targetId = enterprises[0].id;
+        }
+
+        if (!targetId || !active) return;
+
+        // Migrate all unassigned checks
+        for (const checkDoc of unassignedChecks) {
+          if (!active) break;
+          await updateDoc(doc(db, 'checks', checkDoc.id), {
+            enterpriseId: targetId
+          });
+        }
+
+        // Also migrate unassigned invoices and beneficiaries to keep them clean
+        const invoicesSnap = await getDocs(collection(db, 'invoices'));
+        for (const invoiceDoc of invoicesSnap.docs) {
+          if (!active) break;
+          if (!invoiceDoc.data().enterpriseId) {
+            await updateDoc(doc(db, 'invoices', invoiceDoc.id), {
+              enterpriseId: targetId
+            });
+          }
+        }
+
+        const benSnap = await getDocs(collection(db, 'beneficiaries'));
+        for (const benDoc of benSnap.docs) {
+          if (!active) break;
+          if (!benDoc.data().enterpriseId) {
+            await updateDoc(doc(db, 'beneficiaries', benDoc.id), {
+              enterpriseId: targetId
+            });
+          }
+        }
+
+        console.log(`[Auto-Migration] Successfully migrated ${unassignedChecks.length} unassigned checks to Almacenes Derick.`);
+      } catch (e) {
+        console.error("Error in automatic background checks migration:", e);
+      }
+    };
+
+    if (user && profile) {
+      runSilentMigration();
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [user, profile]);
 
   if (loading) {
     return (
@@ -193,7 +273,7 @@ export default function Layout() {
             Cerrar Sesión
           </button>
           <div className="pt-2">
-            <p className="text-[9px] text-neutral-400 dark:text-neutral-600 font-mono text-center tracking-widest uppercase">Control Financiero v3.1.5</p>
+            <p className="text-[9px] text-neutral-400 dark:text-neutral-600 font-mono text-center tracking-widest uppercase">Control Financiero v{CURRENT_VERSION}</p>
           </div>
         </div>
       </div>

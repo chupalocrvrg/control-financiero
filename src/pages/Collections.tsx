@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, orderBy, limit, where } from 'firebase/firestore';
 import { Plus, Pencil, Trash2, Receipt, AlertCircle, Save, X, Calendar, User, DollarSign, FileText } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
@@ -33,8 +33,9 @@ export default function Collections() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { showToast, showConfirm } = useNotification();
+  const currentEnterpriseId = profile?.enterpriseId || user?.uid;
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCollection, setEditingCollection] = useState<CollectionData | null>(null);
@@ -57,19 +58,30 @@ export default function Collections() {
 
   useEffect(() => {
     fetchData();
-  }, [, user]);
+  }, [user, currentEnterpriseId]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
+      const collQ = query(collection(db, 'collections'), where('enterpriseId', '==', currentEnterpriseId));
+      const empQ = query(collection(db, 'employees'), where('enterpriseId', '==', currentEnterpriseId));
+      
       const [collSnap, empSnap] = await Promise.all([
-        getDocs(query(collection(db, 'collections'), orderBy('createdAt', 'desc'))),
-        getDocs(query(collection(db, 'employees'), orderBy('name')))
+        getDocs(collQ),
+        getDocs(empQ)
       ]);
       
       const colls = collSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as CollectionData));
+      colls.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
       setCollections(colls);
-      setEmployees(empSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee)));
+
+      const empList = empSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee));
+      empList.sort((a, b) => a.name.localeCompare(b.name));
+      setEmployees(empList);
       
       // Find the last final receipt across all collections that have receipts
       let maxReceipt = null;
@@ -162,6 +174,7 @@ export default function Collections() {
         depositsTransfers: dTransfers,
         cashFinal: cFinal,
         clientName: formData.noReceipt ? formData.clientName : null,
+        enterpriseId: currentEnterpriseId
       };
 
       if (editingCollection) {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, orderBy, where } from 'firebase/firestore';
 import { Plus, Pencil, Trash2, ShoppingCart, AlertCircle, Save, X, Calendar, User, DollarSign, Bike } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
@@ -31,8 +31,18 @@ export default function Sales() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, profile, originalUser } = useAuth();
   const { showToast, showConfirm } = useNotification();
+
+  const isSuperAdmin = profile?.role === 'ADMIN' || originalUser?.email === 'marcelogutama3eroa@gmail.com';
+
+  const [enterprises, setEnterprises] = useState<{ id: string; name: string; email?: string }[]>([]);
+  const [selectedEnterpriseId, setSelectedEnterpriseId] = useState<string>(''); // list filter
+  const [formEnterpriseId, setFormEnterpriseId] = useState<string>(''); // form creator filter
+
+  const currentEnterpriseId = isSuperAdmin
+    ? (selectedEnterpriseId || user?.uid || '')
+    : (profile?.role === 'enterprise' ? user?.uid : (profile?.enterpriseId || user?.uid || ''));
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
@@ -80,19 +90,74 @@ export default function Sales() {
   });
 
   useEffect(() => {
-    fetchData();
-  }, [, user]);
+    if (user) {
+      fetchData();
+      if (isSuperAdmin) {
+        loadEnterprises();
+      }
+    }
+  }, [user, isSuperAdmin, selectedEnterpriseId]);
+
+  const loadEnterprises = async () => {
+    try {
+      const q = query(collection(db, 'users'), where('role', '==', 'enterprise'));
+      const snapshot = await getDocs(q);
+      const list = snapshot.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data().name || 'Empresa sin nombre',
+        email: doc.data().email
+      }));
+      setEnterprises(list);
+    } catch (error) {
+      console.error('Error loading enterprises for SuperAdmin sales:', error);
+    }
+  };
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [salesSnap, empSnap] = await Promise.all([
-        getDocs(query(collection(db, 'sales'), orderBy('date', 'desc'), orderBy('createdAt', 'desc'))),
-        getDocs(query(collection(db, 'employees'), orderBy('name')))
-      ]);
       
-      setSales(salesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale)));
-      setEmployees(empSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee)));
+      let salesList: Sale[] = [];
+      let empList: Employee[] = [];
+
+      if (isSuperAdmin) {
+        // SuperAdmin fetches all documents and applies selectedEnterpriseId filter
+        const [allSales, allEmployees] = await Promise.all([
+          getDocs(collection(db, 'sales')),
+          getDocs(collection(db, 'employees'))
+        ]);
+        
+        salesList = allSales.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale));
+        empList = allEmployees.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee));
+        
+        if (selectedEnterpriseId) {
+          salesList = salesList.filter((s: any) => s.enterpriseId === selectedEnterpriseId);
+          empList = empList.filter((e: any) => e.enterpriseId === selectedEnterpriseId);
+        }
+      } else {
+        const tenantId = profile?.role === 'enterprise' ? user?.uid : (profile?.enterpriseId || user?.uid || '');
+        const salesQ = query(collection(db, 'sales'), where('enterpriseId', '==', tenantId));
+        const empQ = query(collection(db, 'employees'), where('enterpriseId', '==', tenantId));
+        
+        const [salesRes, empRes] = await Promise.all([
+          getDocs(salesQ),
+          getDocs(empQ)
+        ]);
+        
+        salesList = salesRes.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale));
+        empList = empRes.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee));
+      }
+
+      salesList.sort((a, b) => {
+        if (b.date !== a.date) return b.date.localeCompare(a.date);
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+      setSales(salesList);
+
+      empList.sort((a, b) => a.name.localeCompare(b.name));
+      setEmployees(empList);
     } catch (err: any) {
       console.error('Error fetching data:', err);
       setError('Error al cargar datos');
@@ -104,6 +169,7 @@ export default function Sales() {
   const handleOpenModal = (sale?: Sale) => {
     if (sale) {
       setEditingSale(sale);
+      setFormEnterpriseId((sale as any).enterpriseId || '');
       setFormData({
         date: sale.date,
         type: sale.type,
@@ -116,10 +182,18 @@ export default function Sales() {
       });
     } else {
       setEditingSale(null);
+      const initialEntId = selectedEnterpriseId || '';
+      setFormEnterpriseId(initialEntId);
+      
+      // Filter employees of the chosen initial company to select a valid seller
+      const validEmps = initialEntId
+        ? employees.filter(e => e.enterpriseId === initialEntId && (e.role === 'vendedor' || e.role === 'ambos'))
+        : employees.filter(e => e.role === 'vendedor' || e.role === 'ambos');
+
       setFormData({
         date: format(new Date(), 'yyyy-MM-dd'),
         type: 'contado',
-        employeeId: employees.find(e => e.role === 'vendedor' || e.role === 'ambos')?.id || '',
+        employeeId: validEmps[0]?.id || '',
         isMoto: false,
         motoType: 'combustion',
         totalValue: '',
@@ -136,6 +210,10 @@ export default function Sales() {
     
     try {
       setIsSubmitting(true);
+      const targetEnterpriseId = isSuperAdmin
+        ? (formEnterpriseId || user.uid)
+        : (profile?.role === 'enterprise' ? user.uid : (profile?.enterpriseId || user.uid || ''));
+
       const saleData = {
         date: formData.date,
         type: formData.type,
@@ -145,6 +223,7 @@ export default function Sales() {
         totalValue: parseFloat(formData.totalValue) || 0,
         clientName: formData.clientName,
         article: formData.article,
+        enterpriseId: targetEnterpriseId
       };
 
       if (editingSale) {
@@ -210,6 +289,32 @@ export default function Sales() {
         </div>
       )}
 
+
+      {isSuperAdmin && (
+        <div className="bg-amber-50/40 dark:bg-amber-950/10 border border-amber-100 dark:border-amber-900/20 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center text-amber-600">
+              <ShoppingCart className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-black text-amber-900 dark:text-amber-100 uppercase tracking-wider">Filtro de Empresa (SuperAdmin)</h4>
+              <p className="text-[10px] text-amber-600 dark:text-amber-400">Verifique las ventas registradas filtrando por empresa matriz.</p>
+            </div>
+          </div>
+          <select
+            value={selectedEnterpriseId}
+            onChange={(e) => setSelectedEnterpriseId(e.target.value)}
+            className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl p-3 text-xs outline-none focus:ring-2 focus:ring-amber-500 font-bold dark:text-neutral-100 min-w-[240px]"
+          >
+            <option value="">-- Ver todas las empresas --</option>
+            {enterprises.map((ent) => (
+              <option key={ent.id} value={ent.id}>
+                {ent.name} ({ent.email})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-neutral-200 dark:border-neutral-800 p-4 mb-6">
         <h3 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200 mb-4">Filtros de Búsqueda</h3>
@@ -386,6 +491,35 @@ export default function Sales() {
             
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
 
+              {isSuperAdmin && (
+                <div className="p-4 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 rounded-xl space-y-2">
+                  <label className="block text-xs font-black text-amber-900 dark:text-amber-100 uppercase tracking-wider pl-1">
+                    Asignar Empresa (SuperAdmin)
+                  </label>
+                  <select
+                    value={formEnterpriseId}
+                    onChange={(e) => {
+                      const newEntId = e.target.value;
+                      setFormEnterpriseId(newEntId);
+                      
+                      // Auto-select the first employee of this new company to prevent mismatch
+                      const validEmps = newEntId
+                        ? employees.filter(emp => emp.enterpriseId === newEntId && (emp.role === 'vendedor' || emp.role === 'ambos'))
+                        : employees.filter(emp => emp.role === 'vendedor' || emp.role === 'ambos');
+                      setFormData(prev => ({ ...prev, employeeId: validEmps[0]?.id || '' }));
+                    }}
+                    className="w-full px-4 py-2 bg-white dark:bg-neutral-800 border border-amber-200 dark:border-neutral-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-amber-500 font-bold dark:text-white"
+                  >
+                    <option value="">-- Asignar al SuperAdmin --</option>
+                    {enterprises.map((ent) => (
+                      <option key={ent.id} value={ent.id}>
+                        {ent.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1 flex items-center gap-1.5">
                   <User className="w-4 h-4 text-neutral-400" /> Nombre del Cliente
@@ -460,9 +594,18 @@ export default function Sales() {
                   className="w-full px-4 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-neutral-900 dark:text-white"
                 >
                   <option value="" disabled>Seleccione un vendedor...</option>
-                  {employees.filter(e => e.role === 'vendedor' || e.role === 'ambos').map(emp => (
-                    <option key={emp.id} value={emp.id}>{emp.name} {emp.lastName}</option>
-                  ))}
+                  {employees
+                    .filter(e => {
+                      if (e.role !== 'vendedor' && e.role !== 'ambos') return false;
+                      if (isSuperAdmin) {
+                        return e.enterpriseId === formEnterpriseId;
+                      }
+                      return true;
+                    })
+                    .map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.name} {emp.lastName}</option>
+                    ))
+                  }
                 </select>
               </div>
 

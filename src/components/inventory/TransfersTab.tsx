@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNotification } from '../../contexts/NotificationContext';
 import { Warehouse, Article, WarehouseInventory, Transfer } from '../../types/inventory';
-import { executeTransfer } from '../../lib/inventory-db';
-import { ArrowLeftRight, AlertTriangle, Plus, Trash2, Calendar, FileText, Check, HelpCircle } from 'lucide-react';
+import { executeTransfer, revertTransfer } from '../../lib/inventory-db';
+import { ArrowLeftRight, AlertTriangle, Plus, Trash2, Calendar, FileText, Check, HelpCircle, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../../lib/utils';
 
@@ -15,6 +16,7 @@ interface TransferItemRow {
 
 export default function TransfersTab() {
   const { user, profile } = useAuth();
+  const { showToast, showConfirm } = useNotification();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [inventories, setInventories] = useState<WarehouseInventory[]>([]);
@@ -31,6 +33,11 @@ export default function TransfersTab() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Revert states
+  const [revertModalOpen, setRevertModalOpen] = useState(false);
+  const [revertItemId, setRevertItemId] = useState<string | null>(null);
+  const [revertComment, setRevertComment] = useState('');
 
   const currentEnterpriseId = profile?.role === 'BODEGUERO' ? profile?.enterpriseId : user?.uid;
 
@@ -175,6 +182,36 @@ export default function TransfersTab() {
       setError('Hubo un error al realizar la transferencia. Intente de nuevo.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDeleteTransfer = (transferId: string) => {
+    setRevertItemId(transferId);
+    setRevertComment('');
+    setRevertModalOpen(true);
+  };
+
+  const handleConfirmRevert = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!revertItemId) return;
+    if (!revertComment.trim()) {
+      showToast('Debe ingresar un motivo para la eliminación.', 'error');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      await revertTransfer(revertItemId, currentEnterpriseId || '', revertComment.trim());
+      showToast('Movimiento de transferencia eliminado y stock revertido correctamente.', 'success');
+      setRevertModalOpen(false);
+      setRevertItemId(null);
+      await fetchData();
+    } catch (err: any) {
+      console.error('Error deleting transfer:', err);
+      showToast(err.message || 'Error al eliminar el movimiento.', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -379,64 +416,162 @@ export default function TransfersTab() {
           </div>
         ) : (
           <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
-            {transfers.map(trans => (
-              <div 
-                key={trans.id}
-                className="bg-neutral-50 dark:bg-neutral-800/20 rounded-2xl border border-neutral-100 dark:border-neutral-800 p-5 space-y-4 shadow-sm"
-              >
-                {/* Meta Header */}
-                <div className="flex flex-wrap justify-between items-start gap-2 border-b border-neutral-100 dark:border-neutral-800 pb-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className={cn(
-                        "px-2.5 py-0.5 text-[9px] font-black rounded-full uppercase tracking-widest",
-                        trans.reason === 'PRÉSTAMO' ? "bg-orange-50 dark:bg-orange-950/20 text-orange-600 dark:text-orange-400" :
-                        trans.reason === 'DEVOLUCIÓN' ? "bg-yellow-50 dark:bg-yellow-950/20 text-yellow-600 dark:text-yellow-400" :
-                        "bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400"
-                      )}>
-                        {trans.reason}
-                      </span>
-                      <span className="text-xs text-neutral-400 font-mono">ID: {trans.id.substring(0, 8)}</span>
-                    </div>
-                    <div className="text-xs font-black text-neutral-900 dark:text-neutral-100 uppercase tracking-tight">
-                      De: <strong className="text-indigo-600 dark:text-indigo-400">{trans.fromWarehouseName}</strong> → A: <strong className="text-indigo-600 dark:text-indigo-400">{trans.toWarehouseName}</strong>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-1 text-[10px] text-neutral-400 font-bold uppercase tracking-tight">
-                    <Calendar className="w-3.5 h-3.5" />
-                    {safeFormatDate(trans.timestamp)}
-                  </div>
-                </div>
-
-                {/* Articles List */}
-                <div className="space-y-1.5">
-                  <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest block">Artículos Movilizados</span>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {trans.articles.map((art, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2.5 bg-white dark:bg-neutral-950 border border-neutral-100 dark:border-neutral-800 rounded-xl text-xs">
-                        <div className="truncate pr-2">
-                          <span className="font-bold text-neutral-800 dark:text-neutral-200 uppercase block truncate">{art.name}</span>
-                          {art.series && <span className="text-[9px] font-mono text-neutral-400 uppercase">S/N: {art.series}</span>}
-                        </div>
-                        <span className="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-black rounded-lg text-[10px]">
-                          {art.quantity} uds
+            {transfers.map(trans => {
+              const isDeleted = trans.status === 'ELIMINADO';
+              return (
+                <div 
+                  key={trans.id}
+                  className={cn(
+                    "rounded-2xl border p-5 space-y-4 shadow-sm transition-all",
+                    isDeleted
+                      ? "bg-red-50/10 dark:bg-red-950/5 border-red-200/50 dark:border-red-900/30 opacity-75"
+                      : "bg-neutral-50 dark:bg-neutral-800/20 border-neutral-100 dark:border-neutral-800"
+                  )}
+                >
+                  {/* Meta Header */}
+                  <div className="flex flex-wrap justify-between items-start gap-2 border-b border-neutral-100 dark:border-neutral-800 pb-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className={cn(
+                          "px-2.5 py-0.5 text-[9px] font-black rounded-full uppercase tracking-widest",
+                          trans.reason === 'PRÉSTAMO' ? "bg-orange-50 dark:bg-orange-950/20 text-orange-600 dark:text-orange-400" :
+                          trans.reason === 'DEVOLUCIÓN' ? "bg-yellow-50 dark:bg-yellow-950/20 text-yellow-600 dark:text-yellow-400" :
+                          "bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400"
+                        )}>
+                          {trans.reason}
                         </span>
+                        {isDeleted && (
+                          <span className="px-2.5 py-0.5 text-[9px] font-black bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 rounded-full uppercase tracking-widest animate-pulse">
+                            ELIMINADO / REVERTIDO
+                          </span>
+                        )}
+                        <span className="text-xs text-neutral-400 font-mono">ID: {trans.id.substring(0, 8)}</span>
                       </div>
-                    ))}
+                      <div className={cn(
+                        "text-xs font-black uppercase tracking-tight",
+                        isDeleted ? "text-neutral-500 line-through" : "text-neutral-900 dark:text-neutral-100"
+                      )}>
+                        De: <strong className="text-indigo-600 dark:text-indigo-400">{trans.fromWarehouseName}</strong> → A: <strong className="text-indigo-600 dark:text-indigo-400">{trans.toWarehouseName}</strong>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-1 text-[10px] text-neutral-400 font-bold uppercase tracking-tight">
+                      <Calendar className="w-3.5 h-3.5" />
+                      {safeFormatDate(trans.timestamp)}
+                    </div>
                   </div>
-                </div>
 
-                {/* Comment Section */}
-                <div className="p-3.5 bg-neutral-100 dark:bg-neutral-800/40 rounded-xl text-xs text-neutral-600 dark:text-neutral-300">
-                  <p className="font-bold uppercase text-[9px] text-neutral-400 mb-1">Comentarios</p>
-                  <p className="font-medium leading-relaxed">{trans.comment}</p>
+                  {/* Articles List */}
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest block">Artículos Movilizados</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {trans.articles.map((art, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-2.5 bg-white dark:bg-neutral-950 border border-neutral-100 dark:border-neutral-800 rounded-xl text-xs">
+                          <div className="truncate pr-2">
+                            <span className={cn(
+                              "font-bold uppercase block truncate",
+                              isDeleted ? "text-neutral-400 line-through" : "text-neutral-800 dark:text-neutral-200"
+                            )}>{art.name}</span>
+                            {art.series && <span className="text-[9px] font-mono text-neutral-400 uppercase">S/N: {art.series}</span>}
+                          </div>
+                          <span className={cn(
+                            "px-2 py-1 font-black rounded-lg text-[10px]",
+                            isDeleted
+                              ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-400"
+                              : "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400"
+                          )}>
+                            {art.quantity} uds
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Comment Section */}
+                  <div className="p-3.5 bg-neutral-100 dark:bg-neutral-800/40 rounded-xl text-xs text-neutral-600 dark:text-neutral-300">
+                    <p className="font-bold uppercase text-[9px] text-neutral-400 mb-1">Comentarios</p>
+                    <p className="font-medium leading-relaxed">{trans.comment}</p>
+                  </div>
+
+                  {/* Revert Reason / Revert Action */}
+                  {isDeleted ? (
+                    <div className="p-3.5 bg-red-50/50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-xl text-xs text-red-600 dark:text-red-400">
+                      <p className="font-bold uppercase text-[9px] mb-1">Motivo de Eliminación</p>
+                      <p className="font-semibold leading-relaxed">{trans.revertReason || 'Sin motivo registrado'}</p>
+                    </div>
+                  ) : (
+                    <div className="flex justify-end pt-1">
+                      <button
+                        onClick={() => handleDeleteTransfer(trans.id)}
+                        className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/10 px-3 py-1.5 rounded-xl transition-all"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Eliminar Movimiento
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
+
+      {/* Revert Reason Modal */}
+      {revertModalOpen && (
+        <div className="fixed inset-0 bg-neutral-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-neutral-900 rounded-[2.5rem] border border-neutral-200 dark:border-neutral-800 max-w-md w-full overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="px-8 py-6 border-b border-neutral-100 dark:border-neutral-800 bg-red-600 text-white flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <Trash2 className="w-5 h-5" />
+                <h3 className="text-lg font-black uppercase tracking-tight">Eliminar Movimiento</h3>
+              </div>
+              <button 
+                onClick={() => setRevertModalOpen(false)}
+                className="p-1 hover:bg-red-700 rounded-full text-white/85 hover:text-white transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmRevert} className="p-8 space-y-4">
+              <p className="text-xs text-neutral-500 font-medium leading-relaxed">
+                Esta acción revertirá los saldos de los artículos en las bodegas correspondientes (sumando y restando el stock según corresponda) y marcará este movimiento como <strong className="text-red-600 dark:text-red-400 font-bold">ELIMINADO / REVERTIDO</strong> en el log.
+              </p>
+
+              <div>
+                <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">
+                  Motivo o Razón de la Eliminación *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  placeholder="Ej. Se seleccionó la bodega equivocada por error del digitador."
+                  value={revertComment}
+                  onChange={(e) => setRevertComment(e.target.value)}
+                  className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/10 text-neutral-900 dark:text-neutral-50 transition-all"
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end pt-4">
+                <button
+                  type="button"
+                  onClick={() => setRevertModalOpen(false)}
+                  className="px-5 py-2.5 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all"
+                >
+                  Sí, revertir y eliminar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

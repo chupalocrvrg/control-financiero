@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNotification } from '../../contexts/NotificationContext';
 import { Warehouse, Article, WarehouseInventory, InventorySale } from '../../types/inventory';
-import { executeInventorySale } from '../../lib/inventory-db';
-import { ShoppingCart, AlertTriangle, Plus, Trash2, Calendar, FileText, Check, User, Gift, Tag } from 'lucide-react';
+import { executeInventorySale, revertInventorySale } from '../../lib/inventory-db';
+import { ShoppingCart, AlertTriangle, Plus, Trash2, Calendar, FileText, Check, User, Gift, Tag, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../../lib/utils';
 
@@ -14,6 +15,7 @@ interface Employee {
   lastName: string;
   role: 'vendedor' | 'cobrador' | 'ambos';
   userId?: string;
+  enterpriseId?: string;
 }
 
 interface SaleItemRow {
@@ -25,6 +27,7 @@ interface SaleItemRow {
 
 export default function SalesTab() {
   const { user, profile } = useAuth();
+  const { showToast, showConfirm } = useNotification();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [inventories, setInventories] = useState<WarehouseInventory[]>([]);
@@ -40,6 +43,11 @@ export default function SalesTab() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Revert states
+  const [revertModalOpen, setRevertModalOpen] = useState(false);
+  const [revertItemId, setRevertItemId] = useState<string | null>(null);
+  const [revertComment, setRevertComment] = useState('');
 
   const currentEnterpriseId = profile?.role === 'BODEGUERO' ? profile?.enterpriseId : user?.uid;
 
@@ -78,7 +86,7 @@ export default function SalesTab() {
       const empList = empSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee));
       const filteredSellers = empList.filter(emp => 
         (emp.role === 'vendedor' || emp.role === 'ambos') && 
-        (!emp.userId || emp.userId === currentEnterpriseId)
+        (emp.enterpriseId === currentEnterpriseId || (!emp.enterpriseId && (!emp.userId || emp.userId === currentEnterpriseId)))
       );
       setSellers(filteredSellers);
       if (filteredSellers.length > 0 && !sellerId) {
@@ -216,6 +224,36 @@ export default function SalesTab() {
     }
   };
 
+  const handleDeleteSale = (saleId: string) => {
+    setRevertItemId(saleId);
+    setRevertComment('');
+    setRevertModalOpen(true);
+  };
+
+  const handleConfirmRevertSale = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!revertItemId) return;
+    if (!revertComment.trim()) {
+      showToast('Debe ingresar un motivo para la eliminación.', 'error');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      await revertInventorySale(revertItemId, currentEnterpriseId || '', revertComment.trim());
+      showToast('Movimiento de venta eliminado y stock revertido correctamente.', 'success');
+      setRevertModalOpen(false);
+      setRevertItemId(null);
+      await fetchData();
+    } catch (err: any) {
+      console.error('Error deleting sale:', err);
+      showToast(err.message || 'Error al eliminar el movimiento.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const safeFormatDate = (date: any) => {
     if (!date) return '';
     try {
@@ -225,6 +263,8 @@ export default function SalesTab() {
       return '';
     }
   };
+
+  const uniqueClients = Array.from(new Set(sales.map(s => s.clientName).filter(Boolean))).sort() as string[];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -272,12 +312,18 @@ export default function SalesTab() {
                 <input
                   type="text"
                   required
+                  list="clients-list"
                   placeholder="Ej. María Auxiliadora"
                   value={clientName}
                   onChange={(e) => setClientName(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 text-neutral-900 dark:text-neutral-50 uppercase font-bold"
                 />
                 <User className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <datalist id="clients-list">
+                  {uniqueClients.map(client => (
+                    <option key={client} value={client} />
+                  ))}
+                </datalist>
               </div>
             </div>
 
@@ -428,64 +474,162 @@ export default function SalesTab() {
           </div>
         ) : (
           <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
-            {sales.map(sale => (
-              <div 
-                key={sale.id}
-                className="bg-neutral-50 dark:bg-neutral-800/20 rounded-2xl border border-neutral-100 dark:border-neutral-800 p-5 space-y-4 shadow-sm"
-              >
-                {/* Meta Header */}
-                <div className="flex flex-wrap justify-between items-start gap-2 border-b border-neutral-100 dark:border-neutral-800 pb-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-0.5 text-[9px] font-black rounded-full uppercase tracking-widest bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400">
-                        Venta Bodega
-                      </span>
-                      <span className="text-xs text-neutral-400 font-mono">ID: {sale.id.substring(0, 8)}</span>
-                    </div>
-                    <div className="text-xs font-black text-neutral-900 dark:text-neutral-100 uppercase tracking-tight">
-                      Cliente: <strong className="text-indigo-600 dark:text-indigo-400">{sale.clientName}</strong>
-                    </div>
-                    <div className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-tight flex items-center gap-1">
-                      Vendedor Asignado: <strong className="text-neutral-700 dark:text-neutral-200 uppercase">{sale.sellerName}</strong>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-1 text-[10px] text-neutral-400 font-bold uppercase tracking-tight">
-                    <Calendar className="w-3.5 h-3.5" />
-                    {safeFormatDate(sale.timestamp)}
-                  </div>
-                </div>
-
-                {/* Articles List */}
-                <div className="space-y-1.5">
-                  <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest block">Artículos Despachados</span>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {sale.soldArticles.map((art, idx) => (
-                      <div key={idx} className="flex flex-col p-2.5 bg-white dark:bg-neutral-950 border border-neutral-100 dark:border-neutral-800 rounded-xl text-xs space-y-1.5">
-                        <div className="flex justify-between items-start gap-2">
-                          <span className="font-bold text-neutral-800 dark:text-neutral-200 uppercase truncate" title={art.name}>{art.name}</span>
-                          <span className={cn(
-                            "px-2 py-0.5 text-[8px] font-black rounded uppercase tracking-widest",
-                            art.isGift 
-                              ? "bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300"
-                              : "bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400"
-                          )}>
-                            {art.isGift ? 'Regalo' : 'Vendido'}
+            {sales.map(sale => {
+              const isDeleted = sale.status === 'ELIMINADO';
+              return (
+                <div 
+                  key={sale.id}
+                  className={cn(
+                    "rounded-2xl border p-5 space-y-4 shadow-sm transition-all",
+                    isDeleted
+                      ? "bg-red-50/10 dark:bg-red-950/5 border-red-200/50 dark:border-red-900/30 opacity-75"
+                      : "bg-neutral-50 dark:bg-neutral-800/20 border-neutral-100 dark:border-neutral-800"
+                  )}
+                >
+                  {/* Meta Header */}
+                  <div className="flex flex-wrap justify-between items-start gap-2 border-b border-neutral-100 dark:border-neutral-800 pb-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-0.5 text-[9px] font-black rounded-full uppercase tracking-widest bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400">
+                          Venta Bodega
+                        </span>
+                        {isDeleted && (
+                          <span className="px-2.5 py-0.5 text-[9px] font-black bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 rounded-full uppercase tracking-widest animate-pulse">
+                            VENTA ELIMINADA / REVERTIDA
                           </span>
-                        </div>
-                        <div className="flex justify-between items-center text-[10px] text-neutral-400 font-semibold uppercase">
-                          <span>Bodega: <strong className="text-neutral-600 dark:text-neutral-300">{art.warehouseName}</strong></span>
-                          <strong className="text-indigo-600 dark:text-indigo-400 font-extrabold">{art.quantity} uds</strong>
-                        </div>
+                        )}
+                        <span className="text-xs text-neutral-400 font-mono">ID: {sale.id.substring(0, 8)}</span>
                       </div>
-                    ))}
+                      <div className={cn(
+                        "text-xs font-black uppercase tracking-tight",
+                        isDeleted ? "text-neutral-500 line-through" : "text-neutral-900 dark:text-neutral-100"
+                      )}>
+                        Cliente: <strong className="text-indigo-600 dark:text-indigo-400">{sale.clientName}</strong>
+                      </div>
+                      <div className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-tight flex items-center gap-1">
+                        Vendedor Asignado: <strong className="text-neutral-700 dark:text-neutral-200 uppercase">{sale.sellerName}</strong>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-1 text-[10px] text-neutral-400 font-bold uppercase tracking-tight">
+                      <Calendar className="w-3.5 h-3.5" />
+                      {safeFormatDate(sale.timestamp)}
+                    </div>
                   </div>
+
+                  {/* Articles List */}
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest block">Artículos Despachados</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {sale.soldArticles.map((art, idx) => (
+                        <div key={idx} className="flex flex-col p-2.5 bg-white dark:bg-neutral-950 border border-neutral-100 dark:border-neutral-800 rounded-xl text-xs space-y-1.5">
+                          <div className="flex justify-between items-start gap-2">
+                            <span className={cn(
+                              "font-bold uppercase block truncate",
+                              isDeleted ? "text-neutral-400 line-through" : "text-neutral-800 dark:text-neutral-200"
+                            )} title={art.name}>{art.name}</span>
+                            <span className={cn(
+                              "px-2 py-0.5 text-[8px] font-black rounded uppercase tracking-widest",
+                              isDeleted
+                                ? "bg-neutral-100 text-neutral-400"
+                                : art.isGift 
+                                  ? "bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300"
+                                  : "bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400"
+                            )}>
+                              {art.isGift ? 'Regalo' : 'Vendido'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-[10px] text-neutral-400 font-semibold uppercase">
+                            <span>Bodega: <strong className="text-neutral-600 dark:text-neutral-300">{art.warehouseName}</strong></span>
+                            <strong className={cn(
+                              "font-extrabold",
+                              isDeleted ? "text-neutral-400" : "text-indigo-600 dark:text-indigo-400"
+                            )}>{art.quantity} uds</strong>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Revert Reason / Revert Action */}
+                  {isDeleted ? (
+                    <div className="p-3.5 bg-red-50/50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-xl text-xs text-red-600 dark:text-red-400">
+                      <p className="font-bold uppercase text-[9px] mb-1">Motivo de Eliminación / Reversión</p>
+                      <p className="font-semibold leading-relaxed">{sale.revertReason || 'Sin motivo registrado'}</p>
+                    </div>
+                  ) : (
+                    <div className="flex justify-end pt-1">
+                      <button
+                        onClick={() => handleDeleteSale(sale.id)}
+                        className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/10 px-3 py-1.5 rounded-xl transition-all"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Eliminar Movimiento
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
+
+      {/* Revert Reason Modal */}
+      {revertModalOpen && (
+        <div className="fixed inset-0 bg-neutral-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-neutral-900 rounded-[2.5rem] border border-neutral-200 dark:border-neutral-800 max-w-md w-full overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="px-8 py-6 border-b border-neutral-100 dark:border-neutral-800 bg-red-600 text-white flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <Trash2 className="w-5 h-5" />
+                <h3 className="text-lg font-black uppercase tracking-tight">Eliminar Movimiento de Venta</h3>
+              </div>
+              <button 
+                onClick={() => setRevertModalOpen(false)}
+                className="p-1 hover:bg-red-700 rounded-full text-white/85 hover:text-white transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmRevertSale} className="p-8 space-y-4">
+              <p className="text-xs text-neutral-500 font-medium leading-relaxed">
+                Esta acción revertirá los saldos de los artículos vendidos e incorporará el stock de vuelta a las bodegas originales, y marcará este movimiento como <strong className="text-red-600 dark:text-red-400 font-bold">ELIMINADO / REVERTIDO</strong> en el log de ventas.
+              </p>
+
+              <div>
+                <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">
+                  Motivo o Razón de la Eliminación *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  placeholder="Ej. Devolución de compra por parte del cliente o error de digitación."
+                  value={revertComment}
+                  onChange={(e) => setRevertComment(e.target.value)}
+                  className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/10 text-neutral-900 dark:text-neutral-50 transition-all"
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end pt-4">
+                <button
+                  type="button"
+                  onClick={() => setRevertModalOpen(false)}
+                  className="px-5 py-2.5 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all"
+                >
+                  Sí, revertir y eliminar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

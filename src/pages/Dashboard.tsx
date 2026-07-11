@@ -6,6 +6,7 @@ import { db } from '../firebase';
 import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { formatCurrency, cn } from '../lib/utils';
+import { CURRENT_VERSION } from '../lib/changelog';
 import { 
   format, isBefore, isToday, isTomorrow, parseISO, startOfDay, endOfMonth, 
   addMonths, startOfMonth, eachDayOfInterval, getDay, isSameDay, subMonths,
@@ -113,24 +114,25 @@ export default function Dashboard() {
 
       // 2. Fetch Commerce Data
       const currentMonth = format(new Date(), 'yyyy-MM');
+      const currentEnterpriseId = profile?.enterpriseId || user?.uid;
       
-      const empQ = query(collection(db, 'employees'));
+      const empQ = query(collection(db, 'employees'), where('enterpriseId', '==', currentEnterpriseId));
       const empSnap = await getDocs(empQ);
       const employees = empSnap.docs.map(d => ({id: d.id, ...d.data()} as any));
       
-      const budgetQ = query(collection(db, 'budgets'), where('month', '==', currentMonth));
+      const budgetQ = query(collection(db, 'budgets'), where('enterpriseId', '==', currentEnterpriseId));
       const budgetSnap = await getDocs(budgetQ);
-      const budgets = budgetSnap.docs.map(d => d.data());
+      const budgets = budgetSnap.docs.map(d => d.data()).filter(b => b.month === currentMonth);
 
       const startOfMonthStr = format(startOfMonth(new Date()), 'yyyy-MM-dd');
       const endOfMonthStr = format(endOfMonth(new Date()), 'yyyy-MM-dd');
 
-      const allSalesQ = query(collection(db, 'sales'));
+      const allSalesQ = query(collection(db, 'sales'), where('enterpriseId', '==', currentEnterpriseId));
       const allSalesSnap = await getDocs(allSalesQ);
       const allSalesData = allSalesSnap.docs.map(d => d.data());
       setAllSales(allSalesData);
 
-      const allCollQ = query(collection(db, 'collections'));
+      const allCollQ = query(collection(db, 'collections'), where('enterpriseId', '==', currentEnterpriseId));
       const allCollSnap = await getDocs(allCollQ);
       const allCollsData = allCollSnap.docs.map(d => d.data());
       setAllCollections(allCollsData);
@@ -413,27 +415,38 @@ const handleGenerateAdvancedReport = async (reportType: 'pdf' | 'excel') => {
       const start = startOfDay(parseISO(reportStartDate));
       const end = startOfDay(parseISO(reportEndDate));
       
-      const checksQ = query(collection(db, 'checks'), where('dueDate', '>=', reportStartDate), where('dueDate', '<=', reportEndDate), where('status', 'in', ['PENDING', 'PAID']));
+      const currentEnterpriseId = profile?.enterpriseId || user?.uid;
+
+      const checksQ = query(collection(db, 'checks'), where('userId', '==', user.uid));
       const checksSnap = await getDocs(checksQ);
-      const filteredChecks = checksSnap.docs.map(d => ({ id: d.id, ...d.data() }) as any).sort((a, b) => parseISO(a.dueDate).getTime() - parseISO(b.dueDate).getTime());
+      const filteredChecks = checksSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }) as any)
+        .filter(c => c.dueDate >= reportStartDate && c.dueDate <= reportEndDate && ['PENDING', 'PAID'].includes(c.status))
+        .sort((a, b) => parseISO(a.dueDate).getTime() - parseISO(b.dueDate).getTime());
 
-      const salesQ = query(collection(db, 'sales'), where('date', '>=', reportStartDate), where('date', '<=', reportEndDate));
+      const salesQ = query(collection(db, 'sales'), where('enterpriseId', '==', currentEnterpriseId));
       const salesSnap = await getDocs(salesQ);
-      const salesData = salesSnap.docs.map(d => d.data());
+      const salesData = salesSnap.docs
+        .map(d => d.data())
+        .filter(s => s.date >= reportStartDate && s.date <= reportEndDate);
 
-      const collQ = query(collection(db, 'collections'), where('initialDate', '>=', reportStartDate));
+      const collQ = query(collection(db, 'collections'), where('enterpriseId', '==', currentEnterpriseId));
       const collSnap = await getDocs(collQ);
-      const collsData = collSnap.docs.map(d => d.data()).filter(c => c.initialDate <= reportEndDate);
+      const collsData = collSnap.docs
+        .map(d => d.data())
+        .filter(c => c.initialDate >= reportStartDate && c.initialDate <= reportEndDate);
 
-      const empQ = query(collection(db, 'employees'));
+      const empQ = query(collection(db, 'employees'), where('enterpriseId', '==', currentEnterpriseId));
       const empSnap = await getDocs(empQ);
       const employees = empSnap.docs.map(d => ({id: d.id, ...d.data()}));
 
       const startMonthStr = reportStartDate.substring(0, 7);
       const endMonthStr = reportEndDate.substring(0, 7);
-      const budgetQ = query(collection(db, 'budgets'), where('month', '>=', startMonthStr), where('month', '<=', endMonthStr));
+      const budgetQ = query(collection(db, 'budgets'), where('enterpriseId', '==', currentEnterpriseId));
       const budgetSnap = await getDocs(budgetQ);
-      const budgetsData = budgetSnap.docs.map(d => d.data());
+      const budgetsData = budgetSnap.docs
+        .map(d => d.data())
+        .filter(b => b.month >= startMonthStr && b.month <= endMonthStr);
 
       // Variables Globales
       let totalArticulosContado = 0;
@@ -757,7 +770,7 @@ const handleGenerateAdvancedReport = async (reportType: 'pdf' | 'excel') => {
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-50 tracking-tight">Análisis de Egresos</h1>
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">Versión v3.1.5 • Inteligencia Financiera</p>
+          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">Versión v{CURRENT_VERSION} • Inteligencia Financiera</p>
         </div>
         <div className="flex gap-3 flex-wrap">
           <button 
