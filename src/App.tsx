@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { SettingsProvider } from './contexts/SettingsContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 import Layout from './components/Layout';
 import SecurityGuard from './components/SecurityGuard';
 
@@ -16,6 +17,7 @@ const Employees = lazy(() => import('./pages/Employees'));
 const Budgets = lazy(() => import('./pages/Budgets'));
 const Sales = lazy(() => import('./pages/Sales'));
 const Collections = lazy(() => import('./pages/Collections'));
+const Inventory = lazy(() => import('./pages/Inventory'));
 
 const LoadingFallback = () => (
   <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-8 text-center">
@@ -28,28 +30,31 @@ const LoadingFallback = () => (
 export default function App() {
   return (
     <AuthProvider>
-      <SettingsProvider>
-        <BrowserRouter>
-          <Suspense fallback={<LoadingFallback />}>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/onboarding" element={<Onboarding />} />
-              
-              <Route element={<Layout />}>
-                <Route path="/" element={<SecurityGuard><Dashboard /></SecurityGuard>} />
-                <Route path="/entry" element={<SecurityGuard><CheckEntry /></SecurityGuard>} />
-                <Route path="/search" element={<SecurityGuard><CheckSearch /></SecurityGuard>} />
-                <Route path="/sales" element={<SecurityGuard><Sales /></SecurityGuard>} />
-                <Route path="/collections" element={<SecurityGuard><Collections /></SecurityGuard>} />
-                <Route path="/employees" element={<SecurityGuard><Employees /></SecurityGuard>} />
-                <Route path="/budgets" element={<SecurityGuard><Budgets /></SecurityGuard>} />
-                <Route path="/settings" element={<SecurityGuard><Settings /></SecurityGuard>} />
-                <Route path="/admin" element={<SecurityGuard><AdminPanel /></SecurityGuard>} />
-              </Route>
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
-      </SettingsProvider>
+      <NotificationProvider>
+        <SettingsProvider>
+          <BrowserRouter>
+            <Suspense fallback={<LoadingFallback />}>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/onboarding" element={<Onboarding />} />
+                
+                <Route element={<Layout />}>
+                  <Route path="/" element={<SecurityGuard><Dashboard /></SecurityGuard>} />
+                  <Route path="/entry" element={<SecurityGuard><CheckEntry /></SecurityGuard>} />
+                  <Route path="/search" element={<SecurityGuard><CheckSearch /></SecurityGuard>} />
+                  <Route path="/sales" element={<SecurityGuard><Sales /></SecurityGuard>} />
+                  <Route path="/collections" element={<SecurityGuard><Collections /></SecurityGuard>} />
+                  <Route path="/employees" element={<SecurityGuard><Employees /></SecurityGuard>} />
+                  <Route path="/budgets" element={<SecurityGuard><Budgets /></SecurityGuard>} />
+                  <Route path="/inventory" element={<SecurityGuard><Inventory /></SecurityGuard>} />
+                  <Route path="/settings" element={<SecurityGuard><Settings /></SecurityGuard>} />
+                  <Route path="/admin" element={<SecurityGuard><AdminPanel /></SecurityGuard>} />
+                </Route>
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
+        </SettingsProvider>
+      </NotificationProvider>
     </AuthProvider>
   );
 }

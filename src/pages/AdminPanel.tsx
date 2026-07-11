@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
+import { useNotification } from '../contexts/NotificationContext';
 import { db } from '../firebase';
-import { collection, getDocs, getDoc, doc, updateDoc, query, where, orderBy, deleteDoc, addDoc, serverTimestamp, limit } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, updateDoc, query, where, orderBy, deleteDoc, addDoc, serverTimestamp, limit, writeBatch } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { formatCurrency, cn } from '../lib/utils';
 import { format, parseISO, addDays, addMonths, addYears } from 'date-fns';
 import { Users, User, Shield, Calendar, Eye, Ban, CheckCircle, Search, Edit3, X, Download, ShieldCheck, Mail, Clock, Lock, Trash2, Plus, ArrowRight, RotateCcw, AlertTriangle } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { changelog } from '../lib/changelog';
+import { getDynamicVersions, ChangelogRelease } from '../lib/changelog';
 import { logAudit, AuditAction } from '../lib/audit';
 
 interface UserData {
@@ -25,6 +26,7 @@ interface UserData {
 export default function AdminPanel() {
   const { user, isAdmin, profile, impersonateUser, originalUser } = useAuth();
   const { settings } = useSettings();
+  const { showToast, showAlert, showConfirm } = useNotification();
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -41,11 +43,19 @@ export default function AdminPanel() {
   const [deleteUserPinValue, setDeleteUserPinValue] = useState('');
 
   const [viewingUserInstance, setViewingUserInstance] = useState<UserData | null>(null);
-  const [activeTab, setActiveTab] = useState<'USERS' | 'HISTORY' | 'AUDIT' | 'TRASH'>('USERS');
+  const [activeTab, setActiveTab] = useState<'USERS' | 'HISTORY' | 'AUDIT' | 'TRASH' | 'ENTITIES'>('USERS');
+  const [editingEntityUser, setEditingEntityUser] = useState<any | null>(null);
+  const [entityFormData, setEntityFormData] = useState({
+    role: 'enterprise',
+    enterpriseId: ''
+  });
+  const [showEntityModal, setShowEntityModal] = useState(false);
   const [userChecks, setUserChecks] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [trashItems, setTrashItems] = useState<any[]>([]);
   const [viewingUserSettings, setViewingUserSettings] = useState<any>(null);
+  const [dynamicVersions, setDynamicVersions] = useState<ChangelogRelease[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
   const [editingCheck, setEditingCheck] = useState<any | null>(null);
   const [checkToDelete, setCheckToDelete] = useState<string | null>(null);
   const [isAddingCheck, setIsAddingCheck] = useState(false);
@@ -66,8 +76,22 @@ export default function AdminPanel() {
       loadUsers();
       if (activeTab === 'AUDIT') loadAuditLogs();
       if (activeTab === 'TRASH') loadTrashItems();
+      if (activeTab === 'HISTORY') loadDynamicVersions();
     }
   }, [isSuperAdmin, activeTab]);
+
+  const loadDynamicVersions = async () => {
+    setLoading(false); // don't block the whole page with global loading spinner
+    setLoadingVersions(true);
+    try {
+      const list = await getDynamicVersions();
+      setDynamicVersions(list);
+    } catch (e) {
+      console.error("Error cargando versiones dinámicas:", e);
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
 
   const loadAuditLogs = async () => {
     setLoading(true);
@@ -125,6 +149,70 @@ export default function AdminPanel() {
     }
   };
 
+  const handleRunRoleMigration = async () => {
+    setLoading(true);
+    let migratedCount = 0;
+    try {
+      const batch = writeBatch(db);
+      
+      for (const u of users) {
+        const currentRole = (u as any).role;
+        // If they don't have a modern role (enterprise, employee, BODEGUERO, ADMIN), migrate them to enterprise
+        if (currentRole !== 'ADMIN' && currentRole !== 'BODEGUERO' && currentRole !== 'enterprise' && currentRole !== 'employee') {
+          const userRef = doc(db, 'users', u.id);
+          batch.update(userRef, { role: 'enterprise' });
+          migratedCount++;
+        }
+      }
+      
+      if (migratedCount > 0) {
+        await batch.commit();
+        await loadUsers();
+        logAudit(AuditAction.SETTINGS_UPDATE, `Migración automática completada. Se migraron ${migratedCount} usuarios al rol de 'enterprise'.`);
+        showToast(`¡Migración completada! Se actualizaron ${migratedCount} usuarios a 'enterprise'.`, "success");
+      } else {
+        showAlert('Sin cambios', 'Todos los usuarios ya se encuentran migrados o tienen un rol administrativo/específico.', 'info');
+      }
+    } catch (e: any) {
+      console.error("Error running role migration:", e);
+      showToast('Error ejecutando migración: ' + e.message, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveEntityRelation = async () => {
+    if (!editingEntityUser) return;
+    setLoading(true);
+    try {
+      const userRef = doc(db, 'users', editingEntityUser.id);
+      const updateData: any = {
+        role: entityFormData.role,
+      };
+      
+      if (entityFormData.role === 'employee' || entityFormData.role === 'BODEGUERO') {
+        if (!entityFormData.enterpriseId) {
+          throw new Error('Debe seleccionar una empresa para asociar este empleado o bodeguero.');
+        }
+        updateData.enterpriseId = entityFormData.enterpriseId;
+      } else {
+        updateData.enterpriseId = null;
+      }
+      
+      await updateDoc(userRef, updateData);
+      await loadUsers();
+      logAudit(AuditAction.SETTINGS_UPDATE, `Relación de entidad actualizada para ${editingEntityUser.email}: Rol=${entityFormData.role}, Empresa=${entityFormData.enterpriseId || 'Ninguna'}`);
+      setShowEntityModal(false);
+      setEditingEntityUser(null);
+      showToast('Relación de entidad actualizada con éxito.', "success");
+    } catch (e: any) {
+      console.error("Error saving entity relation:", e);
+      showToast('Error al guardar relación: ' + e.message, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const updateSubscription = async (userId: string, type: 'days' | 'months' | 'years', val: number) => {
     setLoading(true);
     try {
@@ -138,7 +226,7 @@ export default function AdminPanel() {
       await updateDoc(doc(db, 'users', userId), { subscriptionEnd: isoStr });
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, subscriptionEnd: isoStr } : u));
       if (selectedUser?.id === userId) setSelectedUser(prev => prev ? { ...prev, subscriptionEnd: isoStr } : null);
-      alert("Suscripción actualizada correctamente");
+      showToast("Suscripción actualizada correctamente", "success");
       logAudit(AuditAction.SETTINGS_UPDATE, `Suscripción de usuario ${userId} extendida por ${val} ${type}`);
     } catch (e) {
       console.error("Error updating subscription:", e);
@@ -150,7 +238,7 @@ export default function AdminPanel() {
 
   const resetPin = async (userId: string) => {
     if (!newPinValue || newPinValue.length !== 6) {
-      alert("PIN inválido: debe tener 6 dígitos");
+      showAlert("PIN Inválido", "El PIN debe tener exactamente 6 dígitos.", "warning");
       return;
     }
     setLoading(true);
@@ -158,7 +246,7 @@ export default function AdminPanel() {
       await updateDoc(doc(db, 'users', userId), { pin: newPinValue });
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, pin: newPinValue } : u));
       if (selectedUser?.id === userId) setSelectedUser(prev => prev ? { ...prev, pin: newPinValue } : null);
-      alert("PIN actualizado exitosamente");
+      showToast("PIN actualizado exitosamente", "success");
       setShowPinModal(false);
       setNewPinValue('');
       logAudit(AuditAction.SETTINGS_UPDATE, `PIN de usuario ${userId} reseteado administrativamente`);
@@ -176,17 +264,17 @@ export default function AdminPanel() {
 
   const handleMigrateData = async () => {
     if (!selectedUser || !migrateTargetUserId) {
-      alert("Seleccione un usuario destino.");
+      showToast("Por favor, seleccione un usuario destino.", "warning");
       return;
     }
     
     if (!profile?.pin) {
-      alert("Error: Tu perfil de administrador no tiene un PIN configurado. Por favor, configúralo en ajustes.");
+      showAlert("PIN no configurado", "Error: Tu perfil de administrador no tiene un PIN configurado. Por favor, configúralo en ajustes.", "error");
       return;
     }
 
     if (migratePinValue !== profile.pin) {
-      alert("PIN de administrador incorrecto.");
+      showAlert("PIN Incorrecto", "El PIN de administrador ingresado es incorrecto.", "error");
       return;
     }
     
@@ -229,13 +317,13 @@ export default function AdminPanel() {
       
       logAudit(AuditAction.SETTINGS_UPDATE, `Migrados ${checksSnaps.size} cheques, ${invSnaps.size} facturas y ${benSnaps.size} beneficiarios desde ${selectedUser.id} hacia ${migrateTargetUserId}`);
       
-      alert(`Operación Exitosa: Se han migrado ${checksSnaps.size} cheques, ${invSnaps.size} facturas y ${benSnaps.size} beneficiarios.`);
+      showAlert("Migración Exitosa", `Se han migrado ${checksSnaps.size} cheques, ${invSnaps.size} facturas y ${benSnaps.size} beneficiarios correctamente.`, "success");
       setShowMigrateModal(false);
       setMigratePinValue('');
       setMigrateTargetUserId('');
     } catch (e) {
       console.error("Error crítico migrando data del usuario:", e);
-      alert("Error al migrar la base de datos.");
+      showToast("Error al migrar la base de datos", "error");
       handleFirestoreError(e, OperationType.WRITE, `admin/migrate/${selectedUser.id}`);
     } finally {
       setLoading(false);
@@ -247,12 +335,12 @@ export default function AdminPanel() {
     
     // Safety check for admin pin
     if (!profile?.pin) {
-      alert("Error: Tu perfil de administrador no tiene un PIN configurado. Por favor, configúralo en ajustes.");
+      showAlert("PIN no configurado", "Error: Tu perfil de administrador no tiene un PIN configurado. Por favor, configúralo en ajustes.", "error");
       return;
     }
 
     if (adminPinValue !== profile.pin) {
-      alert("PIN de administrador incorrecto.");
+      showAlert("PIN Incorrecto", "PIN de administrador incorrecto.", "error");
       return;
     }
     
@@ -272,8 +360,6 @@ export default function AdminPanel() {
       const invSnaps = await getDocs(invoicesQ);
       console.log(`Encontradas ${invSnaps.size} facturas para eliminar.`);
       
-      // Import writeBatch and doc locally to ensure they are available if needed, 
-      // but they are already imported at the top.
       const { writeBatch } = await import('firebase/firestore');
       const batch = writeBatch(db);
       
@@ -294,12 +380,12 @@ export default function AdminPanel() {
       
       logAudit(AuditAction.DB_VACUUM, `Vaciada base de datos del usuario ${selectedUser.name} (${selectedUser.id}). Se eliminaron ${checksSnaps.size} cheques y ${invSnaps.size} facturas.`);
       
-      alert(`Operación Exitosa: Se han eliminado ${checksSnaps.size} cheques y ${invSnaps.size} facturas de ${selectedUser.name}.`);
+      showAlert("Vaciado Completado", `Se han eliminado ${checksSnaps.size} cheques y ${invSnaps.size} facturas de ${selectedUser.name} exitosamente.`, "success");
       setShowAdminConfirmModal(false);
       setAdminPinValue('');
     } catch (e) {
       console.error("Error crítico eliminando data del usuario:", e);
-      alert("Error al vaciar la base de datos. Consulta la consola para más detalles.");
+      showAlert("Error de Vaciado", "Error al vaciar la base de datos. Consulta la consola para más detalles.", "error");
       handleFirestoreError(e, OperationType.WRITE, `admin/cleanup/${selectedUser.id}`);
     } finally {
       setLoading(false);
@@ -310,12 +396,12 @@ export default function AdminPanel() {
     if (!selectedUser) return;
     
     if (!profile?.pin) {
-      alert("Error: Tu perfil de administrador no tiene un PIN configurado. Por favor, configúralo en ajustes.");
+      showAlert("PIN no configurado", "Error: Tu perfil de administrador no tiene un PIN configurado. Por favor, configúralo en ajustes.", "error");
       return;
     }
 
     if (deleteUserPinValue !== profile.pin) {
-      alert("PIN de administrador incorrecto.");
+      showAlert("PIN Incorrecto", "PIN de administrador incorrecto.", "error");
       return;
     }
     
@@ -354,11 +440,12 @@ export default function AdminPanel() {
         setUserChecks([]);
       }
       
-      alert(`El usuario ${selectedUser.name} ha sido eliminado permanentemente del sistema.`);
+      showAlert("Usuario Eliminado", `El usuario ${selectedUser.name} ha sido eliminado permanentemente del sistema con todos sus registros asociados.`, "success");
       setShowDeleteUserConfirmModal(false);
       setDeleteUserPinValue('');
     } catch (e) {
       console.error("Error crítico eliminando usuario:", e);
+      showToast("Error al eliminar el usuario", "error");
       handleFirestoreError(e, OperationType.DELETE, `admin/deleteUser/${selectedUser.id}`);
     } finally {
       setLoading(false);
@@ -405,9 +492,10 @@ export default function AdminPanel() {
       
       setUserChecks(prev => prev.filter(c => c.id !== checkToDelete));
       setCheckToDelete(null);
-      alert("Registro enviado a la papelera exitosamente");
+      showToast("Registro enviado a la papelera exitosamente", "success");
     } catch (e) {
       console.error("Error deleting check:", e);
+      showToast("Error al enviar el registro a la papelera", "error");
       handleFirestoreError(e, OperationType.DELETE, `checks/${checkToDelete}`);
     } finally {
       setLoading(false);
@@ -436,9 +524,10 @@ export default function AdminPanel() {
       await updateDoc(doc(db, 'checks', editingCheck.id), checkFormData);
       setUserChecks(prev => prev.map(c => c.id === editingCheck.id ? { ...c, ...checkFormData } : c));
       setEditingCheck(null);
-      alert("Registro actualizado correctamente");
+      showToast("Registro actualizado correctamente", "success");
     } catch (e) {
       console.error("Error updating check:", e);
+      showToast("Error al actualizar el registro", "error");
       handleFirestoreError(e, OperationType.UPDATE, `checks/${editingCheck.id}`);
     } finally {
       setLoading(false);
@@ -466,9 +555,10 @@ export default function AdminPanel() {
         status: 'PENDING',
         bank: '',
       });
-      alert("Pago registrado exitosamente");
+      showToast("Pago registrado exitosamente", "success");
     } catch (e) {
       console.error("Error adding check:", e);
+      showToast("Error al registrar el pago", "error");
       handleFirestoreError(e, OperationType.CREATE, 'checks');
     } finally {
       setLoading(false);
@@ -745,7 +835,7 @@ export default function AdminPanel() {
         </div>
       </header>
 
-      <div className="flex bg-neutral-200/50 dark:bg-neutral-800/50 p-1 w-fit rounded-2xl mx-auto md:mx-0">
+      <div className="flex bg-neutral-200/50 dark:bg-neutral-800/50 p-1 w-fit rounded-2xl mx-auto md:mx-0 flex-wrap gap-1">
         <button
           onClick={() => setActiveTab('USERS')}
           className={cn(
@@ -754,6 +844,15 @@ export default function AdminPanel() {
           )}
         >
           Usuarios
+        </button>
+        <button
+          onClick={() => setActiveTab('ENTITIES')}
+          className={cn(
+            "px-6 py-2 rounded-xl text-sm font-bold transition-all",
+            activeTab === 'ENTITIES' ? "bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 shadow-sm" : "text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-300"
+          )}
+        >
+          Asignación y Migración
         </button>
         <button
           onClick={() => setActiveTab('HISTORY')}
@@ -784,7 +883,7 @@ export default function AdminPanel() {
         </button>
       </div>
 
-      {activeTab === 'USERS' ? (
+      {activeTab === 'USERS' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-8 bg-white dark:bg-neutral-900 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
           <div className="px-8 py-6 bg-neutral-50/50 dark:bg-neutral-800/40 border-b border-neutral-100 dark:border-neutral-800 flex justify-between items-center">
@@ -977,41 +1076,51 @@ export default function AdminPanel() {
           )}
         </div>
       </div>
-      ) : (
-        <div className="bg-white dark:bg-neutral-900 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden p-8 lg:p-12">
-          <div className="max-w-4xl mx-auto space-y-12">
-            <div>
-              <h2 className="text-2xl font-black text-neutral-900 dark:text-neutral-50 flex items-center gap-3">
-                <Clock className="w-6 h-6 text-indigo-500" /> Historial de Actualizaciones
-              </h2>
-              <p className="text-neutral-500 mt-2">Detalles técnicos y de plataforma para la administración.</p>
-            </div>
-            
-            <div className="space-y-12 relative before:absolute before:inset-y-0 before:left-[11px] before:w-0.5 before:bg-neutral-100 dark:before:bg-neutral-800">
-              {changelog.map((release, index) => (
-                <div key={release.version} className="relative pl-10">
-                  <span className="absolute left-0 top-1 w-6 h-6 rounded-full border-[6px] border-white dark:border-neutral-900 bg-indigo-500 shadow-sm" />
-                  <div className="mb-2 flex flex-col sm:flex-row sm:items-baseline gap-2">
-                    <h3 className="text-lg font-black tracking-tight text-neutral-900 dark:text-neutral-50">
-                      Versión {release.version}
-                    </h3>
-                    <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">{release.date}</span>
-                    {index === 0 && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px] font-black uppercase tracking-widest ml-0 sm:ml-2">
-                        Actual
-                      </span>
-                    )}
-                  </div>
-                  <ul className="space-y-3 mt-4">
-                    {release.changes.map((change, idx) => (
-                      <li key={idx} className="flex gap-3 text-sm text-neutral-700 dark:text-neutral-300 font-medium">
-                        <ArrowRight className="w-4 h-4 shrink-0 text-neutral-300 dark:text-neutral-600 mt-0.5" />
-                        <span className="leading-relaxed">{change}</span>
-                      </li>
-                    ))}
-                  </ul>
+      )}
+
+      {activeTab === 'HISTORY' && (
+        <div className="space-y-8 animate-in fade-in duration-500">
+          <div className="bg-white dark:bg-neutral-900 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden p-8 lg:p-12">
+            <div className="max-w-4xl mx-auto space-y-12">
+              <div>
+                <h2 className="text-2xl font-black text-neutral-900 dark:text-neutral-50 flex items-center gap-3">
+                  <Clock className="w-6 h-6 text-indigo-500" /> Historial de Actualizaciones y Versiones
+                </h2>
+                <p className="text-neutral-500 mt-2">Detalles técnicos y de plataforma para la administración.</p>
+              </div>
+              
+              {loadingVersions ? (
+                <div className="py-20 text-center text-neutral-400 font-bold uppercase tracking-widest text-[10px] animate-pulse">
+                  Cargando historial de versiones...
                 </div>
-              ))}
+              ) : (
+                <div className="space-y-12 relative before:absolute before:inset-y-0 before:left-[11px] before:w-0.5 before:bg-neutral-100 dark:before:bg-neutral-800">
+                  {dynamicVersions.map((release, index) => (
+                    <div key={release.version} className="relative pl-10">
+                      <span className="absolute left-0 top-1 w-6 h-6 rounded-full border-[6px] border-white dark:border-neutral-900 bg-indigo-500 shadow-sm" />
+                      <div className="mb-2 flex flex-col sm:flex-row sm:items-baseline gap-2">
+                        <h3 className="text-lg font-black tracking-tight text-neutral-900 dark:text-neutral-50">
+                          Versión {release.version}
+                        </h3>
+                        <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">{release.date}</span>
+                        {index === 0 && (
+                          <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px] font-black uppercase tracking-widest ml-0 sm:ml-2">
+                            Actual
+                          </span>
+                        )}
+                      </div>
+                      <ul className="space-y-3 mt-4">
+                        {release.changes.map((change, idx) => (
+                          <li key={idx} className="flex gap-3 text-sm text-neutral-700 dark:text-neutral-300 font-medium">
+                            <ArrowRight className="w-4 h-4 shrink-0 text-neutral-300 dark:text-neutral-600 mt-0.5" />
+                            <span className="leading-relaxed">{change}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1108,6 +1217,240 @@ export default function AdminPanel() {
               <div className="p-20 text-center text-neutral-400 font-bold uppercase tracking-widest text-[10px]">La papelera está vacía.</div>
             )}
           </div>
+        </div>
+      )}
+
+      {activeTab === 'ENTITIES' && (
+        <div className="space-y-8 animate-in fade-in duration-500">
+          {/* Header Action cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="bg-white dark:bg-neutral-900 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 p-8 shadow-sm flex flex-col justify-between">
+              <div>
+                <span className="px-3 py-1 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 text-[10px] font-black uppercase tracking-widest rounded-full">Herramienta de Control</span>
+                <h3 className="text-xl font-bold text-neutral-900 dark:text-neutral-50 mt-3">Migración Automática de Roles</h3>
+                <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-2 leading-relaxed">
+                  Actualiza automáticamente a todos los usuarios registrados que no cuenten con un rol específico (o posean el rol legacy de 'USER') para que sean reconocidos oficialmente como una **Empresa Principal (enterprise)**.
+                </p>
+              </div>
+              <div className="mt-6">
+                <button
+                  onClick={async () => {
+                    if (await showConfirm('Migración de Roles', '¿Está seguro de migrar masivamente todos los usuarios genéricos a empresas principales? Se conservarán los roles de ADMINISTRADOR, BODEGUERO o empleados ya asignados.', { type: 'warning' })) {
+                      handleRunRoleMigration();
+                    }
+                  }}
+                  className="px-6 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer flex items-center gap-2"
+                >
+                  <ShieldCheck className="w-4 h-4" /> Ejecutar Migración de Roles
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-neutral-900 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 p-8 shadow-sm">
+              <span className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest rounded-full">Estadísticas del Sistema</span>
+              <h3 className="text-xl font-bold text-neutral-900 dark:text-neutral-50 mt-3">Distribución de Cuentas</h3>
+              
+              <div className="grid grid-cols-2 gap-4 mt-6">
+                <div className="p-4 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                  <div className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Empresas</div>
+                  <div className="text-2xl font-black text-neutral-900 dark:text-neutral-50 mt-1">
+                    {users.filter(u => (u as any).role === 'enterprise').length}
+                  </div>
+                </div>
+                <div className="p-4 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                  <div className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Empleados</div>
+                  <div className="text-2xl font-black text-neutral-900 dark:text-neutral-50 mt-1">
+                    {users.filter(u => (u as any).role === 'employee').length}
+                  </div>
+                </div>
+                <div className="p-4 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                  <div className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Bodegueros</div>
+                  <div className="text-2xl font-black text-neutral-900 dark:text-neutral-50 mt-1">
+                    {users.filter(u => (u as any).role === 'BODEGUERO').length}
+                  </div>
+                </div>
+                <div className="p-4 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                  <div className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Sin Rol / Otros</div>
+                  <div className="text-2xl font-black text-neutral-900 dark:text-neutral-50 mt-1">
+                    {users.filter(u => !(u as any).role || (u as any).role === 'USER').length}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Main List Table */}
+          <div className="bg-white dark:bg-neutral-900 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
+            <div className="px-8 py-6 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-800/40 flex justify-between items-center flex-wrap gap-4">
+              <div>
+                <h2 className="font-bold text-neutral-900 dark:text-neutral-50 flex items-center gap-3 text-lg">
+                  <Users className="w-5 h-5 text-indigo-500" /> Relación y Asignación de Entidades
+                </h2>
+                <p className="text-xs text-neutral-400 mt-1">Asocie cuentas de empleados y bodegueros a sus respectivas empresas matrices.</p>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar cuenta..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-11 pr-4 py-2 bg-neutral-100 dark:bg-neutral-800 border-none rounded-xl text-xs w-64 outline-none focus:ring-2 focus:ring-indigo-500 text-neutral-800 dark:text-neutral-100 transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-neutral-50 dark:divide-neutral-800">
+                <thead className="bg-neutral-50/50 dark:bg-neutral-800/20">
+                  <tr>
+                    <th className="px-8 py-4 text-left text-[10px] font-black text-neutral-400 uppercase tracking-widest">Identidad de Cuenta</th>
+                    <th className="px-8 py-4 text-left text-[10px] font-black text-neutral-400 uppercase tracking-widest">Rol Asignado</th>
+                    <th className="px-8 py-4 text-left text-[10px] font-black text-neutral-400 uppercase tracking-widest">Asociación Empresarial</th>
+                    <th className="px-8 py-4 text-right text-[10px] font-black text-neutral-400 uppercase tracking-widest">Configurar</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-50 dark:divide-neutral-800">
+                  {users
+                    .filter(u => 
+                      u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                      u.email?.toLowerCase().includes(searchTerm.toLowerCase())
+                    )
+                    .map(u => {
+                      const parentEnterprise = (u as any).enterpriseId 
+                        ? users.find(parent => parent.id === (u as any).enterpriseId)
+                        : null;
+                      
+                      return (
+                        <tr key={u.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/20 transition-colors">
+                          <td className="px-8 py-4">
+                            <div className="text-sm font-black text-neutral-900 dark:text-neutral-50 uppercase">{u.name || 'Sin nombre'}</div>
+                            <div className="text-[10px] text-neutral-400 font-mono mt-0.5">{u.email}</div>
+                          </td>
+                          <td className="px-8 py-4">
+                            {(() => {
+                              const r = (u as any).role;
+                              if (r === 'ADMIN') return <span className="px-3 py-1 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-[10px] font-black rounded-full uppercase">Super Admin</span>;
+                              if (r === 'enterprise') return <span className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 text-[10px] font-black rounded-full uppercase">Empresa Matriz</span>;
+                              if (r === 'employee') return <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-black rounded-full uppercase">Empleado</span>;
+                              if (r === 'BODEGUERO') return <span className="px-3 py-1 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 text-[10px] font-black rounded-full uppercase">Bodeguero</span>;
+                              return <span className="px-3 py-1 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 text-[10px] font-black rounded-full uppercase">Legacy (USER)</span>;
+                            })()}
+                          </td>
+                          <td className="px-8 py-4">
+                            {(() => {
+                              const r = (u as any).role;
+                              if (r === 'ADMIN' || r === 'enterprise') {
+                                return <span className="text-xs text-neutral-400 italic">Ninguna (Es Ente Autónomo)</span>;
+                              }
+                              if (r === 'employee' || r === 'BODEGUERO') {
+                                if (parentEnterprise) {
+                                  return (
+                                    <div>
+                                      <div className="text-xs font-bold text-neutral-800 dark:text-neutral-200">{parentEnterprise.name}</div>
+                                      <div className="text-[9px] text-neutral-400 font-mono">{parentEnterprise.email}</div>
+                                    </div>
+                                  );
+                                }
+                                return <span className="px-2 py-0.5 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 text-[10px] font-black rounded uppercase">⚠️ Sin Empresa Asignada!</span>;
+                              }
+                              return <span className="text-xs text-neutral-400">No aplica</span>;
+                            })()}
+                          </td>
+                          <td className="px-8 py-4 text-right">
+                            <button
+                              onClick={() => {
+                                setEditingEntityUser(u);
+                                setEntityFormData({
+                                  role: (u as any).role || 'enterprise',
+                                  enterpriseId: (u as any).enterpriseId || ''
+                                });
+                                setShowEntityModal(true);
+                              }}
+                              className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-xs font-black uppercase rounded-xl transition-all"
+                            >
+                              Relacionar
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Modal assignment dialog */}
+          {showEntityModal && editingEntityUser && (
+            <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-neutral-900 w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 bg-indigo-600 text-white flex justify-between items-center">
+                  <div>
+                    <h2 className="text-xl font-bold uppercase tracking-tight">Asociación de Entidad</h2>
+                    <p className="text-xs opacity-80 mt-1">Configurar rol y pertenencia para la cuenta seleccionada</p>
+                  </div>
+                  <button onClick={() => { setShowEntityModal(false); setEditingEntityUser(null); }} className="text-white/80 hover:text-white"><X className="w-6 h-6" /></button>
+                </div>
+
+                <div className="p-8 space-y-6">
+                  <div className="p-4 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                    <div className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Cuenta Activa</div>
+                    <div className="text-sm font-bold text-neutral-800 dark:text-neutral-100 mt-1 uppercase">{editingEntityUser.name}</div>
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono mt-0.5">{editingEntityUser.email}</div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block">Rol Operativo</label>
+                    <select
+                      value={entityFormData.role}
+                      onChange={(e) => setEntityFormData({ ...entityFormData, role: e.target.value })}
+                      className="w-full bg-neutral-50 dark:bg-neutral-800 border-none rounded-xl p-4 text-sm font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-neutral-800 dark:text-neutral-100 shadow-inner"
+                    >
+                      <option value="enterprise">Empresa Principal / Matriz (enterprise)</option>
+                      <option value="employee">Empleado Corporativo (employee)</option>
+                      <option value="BODEGUERO">Bodeguero de Inventario (BODEGUERO)</option>
+                      <option value="ADMIN">Super Administrador (ADMIN)</option>
+                      <option value="USER">Legacy (USER)</option>
+                    </select>
+                  </div>
+
+                  {(entityFormData.role === 'employee' || entityFormData.role === 'BODEGUERO') && (
+                    <div className="space-y-2 animate-in slide-in-from-top-4 duration-200">
+                      <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block">Empresa Principal Asociada</label>
+                      <select
+                        value={entityFormData.enterpriseId}
+                        onChange={(e) => setEntityFormData({ ...entityFormData, enterpriseId: e.target.value })}
+                        className="w-full bg-neutral-50 dark:bg-neutral-800 border-none rounded-xl p-4 text-sm font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-neutral-800 dark:text-neutral-100 shadow-inner"
+                      >
+                        <option value="">-- Seleccionar Empresa Matriz --</option>
+                        {users
+                          .filter(u => (u as any).role === 'enterprise')
+                          .map(u => (
+                            <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                          ))}
+                      </select>
+                      <p className="text-[10px] text-neutral-400">Esta cuenta heredará automáticamente todas las finanzas, cheques, inventarios, y bodegas de la empresa seleccionada.</p>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 pt-4 border-t border-neutral-100 dark:border-neutral-800">
+                    <button
+                      onClick={() => { setShowEntityModal(false); setEditingEntityUser(null); }}
+                      className="flex-1 py-4 text-sm font-bold text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all rounded-2xl"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleSaveEntityRelation}
+                      className="flex-1 py-4 bg-indigo-600 text-white text-sm font-black rounded-2xl shadow-lg hover:scale-[1.02] active:scale-95 transition-all"
+                    >
+                      Guardar Relación
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

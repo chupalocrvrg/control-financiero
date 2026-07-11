@@ -1,25 +1,43 @@
 import React, { useEffect, useState } from 'react';
-import { changelog, CURRENT_VERSION } from '../lib/changelog';
+import { getDynamicVersions, ChangelogRelease } from '../lib/changelog';
 import { CheckCircle, X, Sparkles } from 'lucide-react';
 
 export default function UpdatesNotification() {
   const [show, setShow] = useState(false);
+  const [currentRelease, setCurrentRelease] = useState<ChangelogRelease | null>(null);
 
   useEffect(() => {
-    const lastSeen = localStorage.getItem('lastSeenVersion');
-    if (lastSeen !== CURRENT_VERSION) {
-      setShow(true);
+    async function checkVersion() {
+      try {
+        const dynamicList = await getDynamicVersions();
+        if (dynamicList && dynamicList.length > 0) {
+          const latest = dynamicList[0];
+          const lastSeen = localStorage.getItem('lastSeenVersion');
+          
+          // Normalize version names for comparison (e.g. V3.1.5 vs 3.1.5)
+          const cleanLatest = latest.version.replace(/^[Vv]/, '');
+          const cleanLastSeen = lastSeen ? lastSeen.replace(/^[Vv]/, '') : '';
+
+          if (cleanLastSeen !== cleanLatest) {
+            setCurrentRelease(latest);
+            setShow(true);
+          }
+        }
+      } catch (err) {
+        console.error('Error checking dynamic version in popup:', err);
+      }
     }
+    checkVersion();
   }, []);
 
   const handleClose = () => {
-    localStorage.setItem('lastSeenVersion', CURRENT_VERSION);
+    if (currentRelease) {
+      localStorage.setItem('lastSeenVersion', currentRelease.version);
+    }
     setShow(false);
   };
 
-  if (!show) return null;
-
-  const currentRelease = changelog[0];
+  if (!show || !currentRelease) return null;
 
   return (
     <div className="fixed inset-0 z-[2000] bg-neutral-900/60 backdrop-blur-md flex items-center justify-center p-4">

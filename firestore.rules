@@ -198,6 +198,11 @@ service cloud.firestore {
       allow read, write: if isOwnerOrAdmin(userId);
     }
 
+    match /versions/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
     match /auditLogs/{id} {
       allow create: if isVerified() && isValidAudit(incoming()) && isValidId(id);
       allow get, list: if isAdmin();

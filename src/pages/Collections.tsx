@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, orderBy, limit } from 'firebase/firestore';
 import { Plus, Pencil, Trash2, Receipt, AlertCircle, Save, X, Calendar, User, DollarSign, FileText } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotification } from '../contexts/NotificationContext';
 import { format } from 'date-fns';
 
 interface Employee {
@@ -33,6 +34,7 @@ export default function Collections() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
+  const { showToast, showConfirm } = useNotification();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCollection, setEditingCollection] = useState<CollectionData | null>(null);
@@ -181,13 +183,15 @@ export default function Collections() {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('¿Está seguro de eliminar este registro?')) {
+    if (await showConfirm('Eliminar Cobranza', '¿Está seguro de eliminar este registro?', { type: 'danger' })) {
       try {
         await deleteDoc(doc(db, 'collections', id));
         fetchData();
+        showToast('Cobranza eliminada exitosamente', 'success');
       } catch (err: any) {
         console.error('Error deleting collection:', err);
         setError('Error al eliminar registro');
+        showToast('Error al eliminar registro', 'error');
       }
     }
   };

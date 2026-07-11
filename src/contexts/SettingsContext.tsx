@@ -51,7 +51,21 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return;
       }
 
-      const settingsRef = doc(db, 'settings', user.uid);
+      // First, check if user profile has an enterpriseId to load the shared settings
+      let targetId = user.uid;
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          if (userData.enterpriseId) {
+            targetId = userData.enterpriseId;
+          }
+        }
+      } catch (err) {
+        console.warn('Error fetching user profile for settings ID, falling back to user.uid:', err);
+      }
+
+      const settingsRef = doc(db, 'settings', targetId);
       
       unsubscribe = onSnapshot(settingsRef, (docSnap) => {
         if (docSnap.exists()) {
@@ -64,12 +78,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             language: 'es',
             iva: 15,
           }).catch(err => {
-            handleFirestoreError(err, OperationType.WRITE, `settings/${user.uid}`);
+            handleFirestoreError(err, OperationType.WRITE, `settings/${targetId}`);
           });
         }
         setLoading(false);
       }, (error) => {
-        handleFirestoreError(error, OperationType.GET, `settings/${user.uid}`);
+        handleFirestoreError(error, OperationType.GET, `settings/${targetId}`);
         setLoading(false);
       });
     };
@@ -125,7 +139,20 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const user = auth.currentUser;
     if (user) {
-      const settingsRef = doc(db, 'settings', user.uid);
+      let targetId = user.uid;
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          if (userData.enterpriseId) {
+            targetId = userData.enterpriseId;
+          }
+        }
+      } catch (err) {
+        console.warn('Error fetching user profile for setting update:', err);
+      }
+
+      const settingsRef = doc(db, 'settings', targetId);
       try {
         await setDoc(settingsRef, updated);
         // Only log major setting changes worth auditing
@@ -135,7 +162,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           });
         }
       } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, `settings/${user.uid}`);
+        handleFirestoreError(error, OperationType.WRITE, `settings/${targetId}`);
       }
     }
   };

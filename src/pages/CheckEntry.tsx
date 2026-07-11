@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
+import { useNotification } from '../contexts/NotificationContext';
 import { db } from '../firebase';
 import { collection, addDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
 import { RETENTIONS, DISCOUNTS } from '../constants';
@@ -14,6 +15,7 @@ import { logAudit, AuditAction } from '../lib/audit';
 export default function CheckEntry() {
   const { user } = useAuth();
   const { settings } = useSettings();
+  const { showToast, showAlert } = useNotification();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [beneficiaries, setBeneficiaries] = useState<string[]>([]);
@@ -162,12 +164,12 @@ export default function CheckEntry() {
             handleFirestoreError(error, OperationType.CREATE, 'import_batch');
           }
         }
-        alert(`Protocolo de Importación Exitoso: Se procesaron ${count} registros correctamente.`);
+        showAlert('Importación Exitosa', `Se procesaron ${count} registros correctamente desde el archivo de protocolo Excel.`, 'success');
         logAudit(AuditAction.CHECK_CREATE, `Importados ${count} registros mediante protocolo Excel`);
         loadBeneficiaries();
       } catch (err) {
         console.error(err);
-        alert('Error crítico durante la lectura del protocolo Excel');
+        showAlert('Error de Importación', 'Ocurrió un error crítico durante la lectura del protocolo Excel.', 'error');
       } finally {
         setLoading(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -293,12 +295,12 @@ export default function CheckEntry() {
         retentionType: 'none',
         bank: '',
       });
-      alert('Cheques registrados correctamente');
+      showToast('¡Cheques registrados correctamente!', 'success');
       logAudit(AuditAction.CHECK_CREATE, `Registrada Factura ${formData.invoiceNumber} con ${installments.length} cheques por ${formData.beneficiaryName}`);
 
     } catch (error) {
       console.error('Error saving checks:', error);
-      alert('Error al guardar los cheques');
+      showToast('Error al guardar los cheques', 'error');
     } finally {
       setLoading(false);
     }

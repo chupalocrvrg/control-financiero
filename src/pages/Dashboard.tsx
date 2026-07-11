@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
+import { useNotification } from '../contexts/NotificationContext';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
@@ -24,6 +25,7 @@ import {
 } from 'recharts';
 import { logAudit, AuditAction } from '../lib/audit';
 import { Target, User, Store, Bike, Receipt } from 'lucide-react';
+import InventoryDashboard from '../components/inventory/InventoryDashboard';
 
 interface CommerceData {
   employee: any;
@@ -51,8 +53,22 @@ interface Check {
 }
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { settings } = useSettings();
+  const { showToast, showAlert } = useNotification();
+
+  if (profile?.role === 'BODEGUERO') {
+    return (
+      <div className="space-y-6">
+        <header className="mb-4">
+          <h1 className="text-3xl font-black text-neutral-900 dark:text-neutral-50 tracking-tight uppercase italic">Dashboard de Inventario</h1>
+          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">Monitoreo general de bodegas y stock</p>
+        </header>
+        <InventoryDashboard />
+      </div>
+    );
+  }
+
   const [loading, setLoading] = useState(true);
   const [checks, setChecks] = useState<Check[]>([]);
   const [selectedChecks, setSelectedChecks] = useState<Set<string>>(new Set());
@@ -197,13 +213,13 @@ export default function Dashboard() {
         })
       );
       await Promise.all(promises);
-      alert(`✅ Se confirmaron ${selectedChecks.size} pagos.`);
+      showToast(`¡Se confirmaron ${selectedChecks.size} pagos exitosamente!`, 'success');
       logAudit(AuditAction.CHECK_UPDATE, `Actualizados ${selectedChecks.size} cheques a estado PAGADO`);
       setSelectedChecks(new Set());
       await loadDashboardData();
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'checks');
-      alert('Error al confirmar pagos');
+      showToast('Error al confirmar pagos', 'error');
     } finally {
       setLoading(false);
     }
@@ -662,7 +678,7 @@ const handleGenerateAdvancedReport = async (reportType: 'pdf' | 'excel') => {
       setShowCustomReportModal(false);
     } catch (e) {
       console.error(e);
-      alert('Error generando el reporte.');
+      showToast('Error generando el reporte.', 'error');
     } finally {
       setLoading(false);
     }

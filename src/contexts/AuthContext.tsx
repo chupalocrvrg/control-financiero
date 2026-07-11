@@ -11,13 +11,14 @@ export interface UserProfile {
   ruc?: string;
   phone?: string;
   email: string;
-  role: 'ADMIN' | 'USER';
+  role: 'ADMIN' | 'USER' | 'BODEGUERO' | 'enterprise' | 'employee';
   status: 'ENABLED' | 'DISABLED';
   subscriptionEnd: string;
   pin: string;
   pinInactivityLimit: number;
   lastPinEntry: string;
   createdAt: string;
+  enterpriseId?: string;
 }
 
 interface AuthContextType {

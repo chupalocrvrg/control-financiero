@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, orderBy } from 'firebase/firestore';
 import { Plus, Pencil, Trash2, ShoppingCart, AlertCircle, Save, X, Calendar, User, DollarSign, Bike } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotification } from '../contexts/NotificationContext';
 import { format } from 'date-fns';
 
 interface Employee {
@@ -31,6 +32,7 @@ export default function Sales() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
+  const { showToast, showConfirm } = useNotification();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
@@ -164,13 +166,15 @@ export default function Sales() {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('¿Está seguro de eliminar este registro?')) {
+    if (await showConfirm('Eliminar Venta', '¿Está seguro de eliminar este registro?', { type: 'danger' })) {
       try {
         await deleteDoc(doc(db, 'sales', id));
         fetchData();
+        showToast('Venta eliminada exitosamente', 'success');
       } catch (err: any) {
         console.error('Error deleting sale:', err);
         setError('Error al eliminar registro');
+        showToast('Error al eliminar registro', 'error');
       }
     }
   };

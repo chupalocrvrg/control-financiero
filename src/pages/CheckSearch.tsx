@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
+import { useNotification } from '../contexts/NotificationContext';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { formatCurrency, cn } from '../lib/utils';
@@ -32,6 +33,7 @@ interface Check {
 export default function CheckSearch() {
   const { user } = useAuth();
   const { settings } = useSettings();
+  const { showToast, showConfirm } = useNotification();
   const [loading, setLoading] = useState(false);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [checks, setChecks] = useState<Check[]>([]);
@@ -477,7 +479,7 @@ export default function CheckSearch() {
                                   {check.status !== 'PAID' && (
                                     <button
                                       onClick={async () => {
-                                        if (!confirm(`¿Estás seguro de enviar el cheque #${check.checkNumber} a la papelera?`)) return;
+                                        if (!(await showConfirm('Mover a Papelera', `¿Estás seguro de enviar el cheque #${check.checkNumber} a la papelera?`, { type: 'danger' }))) return;
                                         try {
                                           await updateDoc(doc(db, 'checks', check.id), { status: 'DELETED' });
                                           setChecks(prev => prev.filter(c => c.id !== check.id));
@@ -485,9 +487,9 @@ export default function CheckSearch() {
                                           import('../lib/audit').then(({ logAudit, AuditAction }) => {
                                             logAudit(AuditAction.CHECK_DELETE, `Cheque ${check.checkNumber} de ${check.beneficiaryName} enviado a papelera por el usuario`, check.id);
                                           });
-                                          alert("Enviado a papelera exitosamente");
+                                          showToast("Enviado a papelera exitosamente", "success");
                                         } catch (e) {
-                                          alert("Error al enviar a la papelera");
+                                          showToast("Error al enviar a la papelera", "error");
                                         }
                                       }}
                                       className="p-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/35 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 rounded-xl transition-colors border border-red-200 dark:border-red-800 inline-flex items-center justify-center"
@@ -530,15 +532,15 @@ export default function CheckSearch() {
                 {trashChecks.length > 0 && (
                   <button
                     onClick={async () => {
-                      if (!confirm("¿De verdad quieres vaciar toda la papelera permanentemente? Esta acción es irreversible.")) return;
+                      if (!(await showConfirm("Vaciar Papelera", "¿De verdad quieres vaciar toda la papelera permanentemente? Esta acción es irreversible.", { type: "danger" }))) return;
                       try {
                         for (const check of trashChecks) {
                           await deleteDoc(doc(db, 'checks', check.id));
                         }
                         setTrashChecks([]);
-                        alert("Papelera vaciada correctamente");
+                        showToast("Papelera vaciada correctamente", "success");
                       } catch (e) {
-                        alert("Error al vaciar papelera");
+                        showToast("Error al vaciar papelera", "error");
                       }
                     }}
                     className="flex items-center px-4 py-2 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-bold rounded-xl transition-colors border border-red-200 dark:border-red-800"
@@ -605,9 +607,9 @@ export default function CheckSearch() {
                                     import('../lib/audit').then(({ logAudit, AuditAction }) => {
                                       logAudit(AuditAction.SETTINGS_UPDATE, `Restaurado cheque ${check.checkNumber} de ${check.beneficiaryName} desde papelera`, check.id);
                                     });
-                                    alert("Cheque restaurado correctamente");
+                                    showToast("Cheque restaurado correctamente", "success");
                                   } catch (error) {
-                                    alert("Error al restaurar");
+                                    showToast("Error al restaurar", "error");
                                   }
                                 }}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/30 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-lg transition-colors border border-indigo-200 dark:border-indigo-800"
@@ -617,15 +619,16 @@ export default function CheckSearch() {
                               </button>
                               <button
                                 onClick={async () => {
-                                  if (!confirm("¿Está seguro de borrar definitivamente este cheque? Esta acción es permanente.")) return;
+                                  if (!(await showConfirm("Borrar Definitivamente", "¿Está seguro de borrar definitivamente este cheque? Esta acción es permanente.", { type: "danger" }))) return;
                                   try {
                                     await deleteDoc(doc(db, 'checks', check.id));
                                     setTrashChecks(prev => prev.filter(c => c.id !== check.id));
                                     import('../lib/audit').then(({ logAudit, AuditAction }) => {
                                       logAudit(AuditAction.SETTINGS_UPDATE, `Eliminado permanentemente cheque ${check.checkNumber} de ${check.beneficiaryName}`, check.id);
                                     });
+                                    showToast("Cheque eliminado permanentemente", "success");
                                   } catch (e) {
-                                    alert("Error al eliminar permanentemente");
+                                    showToast("Error al eliminar permanentemente", "error");
                                   }
                                 }}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-50 hover:bg-red-50 dark:bg-neutral-850 dark:hover:bg-red-950/30 text-neutral-500 hover:text-red-500 dark:text-neutral-400 dark:hover:text-red-400 text-xs font-bold rounded-lg transition-colors border border-neutral-200 dark:border-neutral-800/40"

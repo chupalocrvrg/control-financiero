@@ -51,31 +51,38 @@ export default function Layout() {
     return <Navigate to="/onboarding" replace />;
   }
 
-  const navigation = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-    {
-      name: 'Finanzas',
-      icon: Banknote,
-      subItems: [
-        { name: 'Ingreso Cheques', href: '/entry', icon: FilePlus },
-        { name: 'Consultas', href: '/search', icon: Search },
+  const navigation = profile?.role === 'BODEGUERO' 
+    ? [
+        { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+        { name: 'Inventario', href: '/inventory', icon: Store },
+        { name: 'Configuración', href: '/settings', icon: Settings },
       ]
-    },
-    {
-      name: 'Comercio',
-      icon: Store,
-      subItems: [
-        { name: 'Ventas', href: '/sales', icon: ShoppingCart },
-        { name: 'Cobranza', href: '/collections', icon: Receipt },
-        { name: 'Empleados', href: '/employees', icon: Users },
-        { name: 'Presupuestos', href: '/budgets', icon: Target },
-      ]
-    },
-    { name: 'Configuración', href: '/settings', icon: Settings },
-  ];
+    : [
+        { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+        {
+          name: 'Finanzas',
+          icon: Banknote,
+          subItems: [
+            { name: 'Ingreso Cheques', href: '/entry', icon: FilePlus },
+            { name: 'Consultas', href: '/search', icon: Search },
+          ]
+        },
+        {
+          name: 'Comercio',
+          icon: Store,
+          subItems: [
+            { name: 'Ventas', href: '/sales', icon: ShoppingCart },
+            { name: 'Cobranza', href: '/collections', icon: Receipt },
+            { name: 'Empleados', href: '/employees', icon: Users },
+            { name: 'Presupuestos', href: '/budgets', icon: Target },
+          ]
+        },
+        { name: 'Inventario', href: '/inventory', icon: Store },
+        { name: 'Configuración', href: '/settings', icon: Settings },
+      ];
 
   const canAccessAdmin = originalUser?.email === 'marcelogutama3eroa@gmail.com';
-  if (canAccessAdmin) {
+  if (canAccessAdmin && profile?.role !== 'BODEGUERO') {
     navigation.push({ name: 'Admin', href: '/admin', icon: Shield });
   }
 

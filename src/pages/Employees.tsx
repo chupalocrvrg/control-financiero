@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, orderBy } from 'firebase/firestore';
 import { Plus, Pencil, Trash2, Users, AlertCircle, Save, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface Employee {
   id: string;
@@ -17,6 +18,7 @@ export default function Employees() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
+  const { showToast, showConfirm } = useNotification();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -100,13 +102,15 @@ export default function Employees() {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('¿Está seguro de eliminar este empleado?')) {
+    if (await showConfirm('Eliminar Empleado', '¿Está seguro de eliminar este empleado?', { type: 'danger' })) {
       try {
         await deleteDoc(doc(db, 'employees', id));
         fetchEmployees();
+        showToast('Empleado eliminado exitosamente', 'success');
       } catch (err: any) {
         console.error('Error deleting employee:', err);
         setError('Error al eliminar empleado');
+        showToast('Error al eliminar empleado', 'error');
       }
     }
   };
