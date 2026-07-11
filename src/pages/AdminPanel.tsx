@@ -5,7 +5,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { db } from '../firebase';
 import { collection, getDocs, getDoc, doc, updateDoc, query, where, orderBy, deleteDoc, addDoc, serverTimestamp, limit, writeBatch } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, hashPin } from '../lib/utils';
 import { format, parseISO, addDays, addMonths, addYears } from 'date-fns';
 import { Users, User, Shield, Calendar, Eye, Ban, CheckCircle, Search, Edit3, X, Download, ShieldCheck, Mail, Clock, Lock, Trash2, Plus, ArrowRight, RotateCcw, AlertTriangle } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -69,7 +69,7 @@ export default function AdminPanel() {
     bank: '',
   });
 
-  const isSuperAdmin = originalUser?.email === 'marcelogutama3eroa@gmail.com';
+  const isSuperAdmin = originalUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
 
   // Personal & Budget Migration Tool States
   const [migrationEmployees, setMigrationEmployees] = useState<any[]>([]);
@@ -480,9 +480,10 @@ export default function AdminPanel() {
     }
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'users', userId), { pin: newPinValue });
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, pin: newPinValue } : u));
-      if (selectedUser?.id === userId) setSelectedUser(prev => prev ? { ...prev, pin: newPinValue } : null);
+      const hashedPin = await hashPin(newPinValue);
+      await updateDoc(doc(db, 'users', userId), { pin: hashedPin });
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, pin: hashedPin } : u));
+      if (selectedUser?.id === userId) setSelectedUser(prev => prev ? { ...prev, pin: hashedPin } : null);
       showToast("PIN actualizado exitosamente", "success");
       setShowPinModal(false);
       setNewPinValue('');
@@ -498,6 +499,45 @@ export default function AdminPanel() {
   const [showMigrateModal, setShowMigrateModal] = useState(false);
   const [migrateTargetUserId, setMigrateTargetUserId] = useState('');
   const [migratePinValue, setMigratePinValue] = useState('');
+
+  const [showImpersonateModal, setShowImpersonateModal] = useState(false);
+  const [impersonateTargetUser, setImpersonateTargetUser] = useState<UserData | null>(null);
+  const [impersonatePinValue, setImpersonatePinValue] = useState('');
+
+  const handleImpersonate = async () => {
+    if (impersonatePinValue.length !== 6) {
+      showAlert("PIN Inválido", "El PIN debe tener 6 dígitos.", "warning");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { hashPin } = await import('../lib/utils');
+      const hashedPin = await hashPin(impersonatePinValue);
+      if (originalUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL) {
+        // Find super admin's PIN. originalUser is FirebaseUser, we need the DB document
+        const superAdminDoc = await getDoc(doc(db, 'users', originalUser.uid));
+        if (superAdminDoc.exists()) {
+          const superAdminData = superAdminDoc.data();
+          if (superAdminData.pin !== hashedPin && superAdminData.pin !== impersonatePinValue) {
+             showAlert("PIN Incorrecto", "El PIN de administrador ingresado no es correcto.", "error");
+             setLoading(false);
+             return;
+          }
+        }
+      }
+      
+      if (impersonateTargetUser) {
+        await impersonateUser({ uid: impersonateTargetUser.id, email: impersonateTargetUser.email, displayName: impersonateTargetUser.name });
+      }
+      setShowImpersonateModal(false);
+      setImpersonatePinValue('');
+    } catch (error) {
+      console.error("Error al simular usuario:", error);
+      showToast("Error al simular sesión", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleMigrateData = async () => {
     if (!selectedUser || !migrateTargetUserId) {
@@ -824,7 +864,7 @@ export default function AdminPanel() {
     c.concept?.toLowerCase().includes(checkSearchTerm.toLowerCase())
   );
 
-  if (originalUser?.email !== 'marcelogutama3eroa@gmail.com') {
+  if (originalUser?.email !== import.meta.env.VITE_SUPER_ADMIN_EMAIL) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
         <Ban className="w-16 h-16 text-red-500 animate-pulse" />
@@ -1176,11 +1216,12 @@ export default function AdminPanel() {
                     </td>
                     <td className="px-8 py-6 text-right">
                       <div className="flex justify-end items-center gap-2">
-                        {originalUser?.email === 'marcelogutama3eroa@gmail.com' && (
+                        {originalUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              impersonateUser({ uid: u.id, email: u.email, displayName: u.name });
+                              setImpersonateTargetUser({ id: u.id, name: u.name, email: u.email, role: u.role, status: u.status, subscriptionEnd: u.subscriptionEnd, pin: u.pin, createdAt: u.createdAt });
+                              setShowImpersonateModal(true);
                             }}
                             className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white dark:bg-indigo-900/50 dark:hover:bg-indigo-600 dark:text-indigo-300 dark:hover:text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-sm"
                             title="Simular Sesión (Impersonate)"
@@ -1212,9 +1253,12 @@ export default function AdminPanel() {
                 <div className="space-y-4">
                   <label className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] block">Comandos de Energía</label>
                   <div className="grid grid-cols-1 gap-3">
-                    {originalUser?.email === 'marcelogutama3eroa@gmail.com' && (
+                    {originalUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL && (
                       <button 
-                        onClick={() => impersonateUser({ uid: selectedUser.id, email: selectedUser.email, displayName: selectedUser.name })}
+                        onClick={() => {
+                          setImpersonateTargetUser(selectedUser);
+                          setShowImpersonateModal(true);
+                        }}
                         className="w-full flex items-center justify-between px-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:brightness-110 shadow-lg shadow-indigo-100 dark:shadow-none transition-all"
                       >
                         <span>Simular Sesión</span>
@@ -1243,7 +1287,7 @@ export default function AdminPanel() {
                       <span>Gestionar PIN</span>
                       <Lock className="w-5 h-5 opacity-40 group-hover:opacity-100" />
                     </button>
-                    {user?.email === 'marcelogutama3eroa@gmail.com' && (
+                    {user?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL && (
                       <>
                         <button 
                           onClick={() => {
@@ -1991,6 +2035,60 @@ export default function AdminPanel() {
           </div>
         </div>
       )}
+
+      {/* Impersonate User Modal */}
+      {showImpersonateModal && impersonateTargetUser && (
+        <div className="fixed inset-0 bg-neutral-900/80 backdrop-blur-md z-[1000] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border-2 border-indigo-500 animate-in zoom-in-95 duration-300">
+            <div className="p-8 border-b border-indigo-500 bg-indigo-600 text-white">
+              <div className="flex items-center gap-3">
+                <Shield className="w-8 h-8" />
+                <h2 className="text-xl font-black uppercase tracking-tight">Simular Usuario</h2>
+              </div>
+            </div>
+            <div className="p-8 space-y-6">
+              <div className="p-4 bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/20 rounded-2xl">
+                <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400">Vas a acceder como {impersonateTargetUser.name}</p>
+                <p className="text-[10px] text-indigo-500/80 uppercase mt-1">Podrás ver y operar la aplicación exactamente como este usuario lo haría.</p>
+              </div>
+                
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block">Confirma con TU PIN de Administrador</label>
+                <input 
+                  type="password" 
+                  maxLength={6}
+                  value={impersonatePinValue}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '');
+                    setImpersonatePinValue(val);
+                  }}
+                  className="w-full bg-neutral-950 border-none rounded-2xl p-4 text-2xl font-mono text-center tracking-[0.5em] focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-white shadow-inner"
+                  placeholder="******"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => {
+                    setShowImpersonateModal(false);
+                    setImpersonatePinValue('');
+                  }}
+                  className="flex-1 py-4 text-sm font-bold text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all rounded-2xl"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={handleImpersonate}
+                  className="flex-1 py-4 bg-indigo-600 text-white text-sm font-black rounded-2xl shadow-lg hover:bg-indigo-700 hover:scale-[1.02] active:scale-95 transition-all"
+                >
+                  SIMULAR SESIÓN
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showDeleteUserConfirmModal && selectedUser && (
         <div className="fixed inset-0 z-[1000] bg-neutral-900/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-neutral-900 w-full max-w-sm rounded-[2rem] p-8 shadow-2xl relative overflow-hidden">

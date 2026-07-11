@@ -23,7 +23,7 @@ export default function CheckEntry() {
   const [enterprises, setEnterprises] = useState<{ id: string; name: string; email?: string }[]>([]);
   const [selectedEnterpriseId, setSelectedEnterpriseId] = useState<string>('');
 
-  const isSuperAdmin = profile?.role === 'ADMIN' || originalUser?.email === 'marcelogutama3eroa@gmail.com';
+  const isSuperAdmin = profile?.role === 'ADMIN' || originalUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
 
   const [formData, setFormData] = useState({
     beneficiaryName: '',

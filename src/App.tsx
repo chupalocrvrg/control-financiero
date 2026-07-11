@@ -5,6 +5,7 @@ import { SettingsProvider } from './contexts/SettingsContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import Layout from './components/Layout';
 import SecurityGuard from './components/SecurityGuard';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { CURRENT_VERSION } from './lib/changelog';
 
 const Login = lazy(() => import('./pages/Login'));
@@ -19,6 +20,7 @@ const Budgets = lazy(() => import('./pages/Budgets'));
 const Sales = lazy(() => import('./pages/Sales'));
 const Collections = lazy(() => import('./pages/Collections'));
 const Inventory = lazy(() => import('./pages/Inventory'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 const LoadingFallback = () => (
   <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-8 text-center">
@@ -30,32 +32,36 @@ const LoadingFallback = () => (
 
 export default function App() {
   return (
-    <AuthProvider>
-      <NotificationProvider>
-        <SettingsProvider>
-          <BrowserRouter>
-            <Suspense fallback={<LoadingFallback />}>
-              <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route path="/onboarding" element={<Onboarding />} />
-                
-                <Route element={<Layout />}>
-                  <Route path="/" element={<SecurityGuard><Dashboard /></SecurityGuard>} />
-                  <Route path="/entry" element={<SecurityGuard><CheckEntry /></SecurityGuard>} />
-                  <Route path="/search" element={<SecurityGuard><CheckSearch /></SecurityGuard>} />
-                  <Route path="/sales" element={<SecurityGuard><Sales /></SecurityGuard>} />
-                  <Route path="/collections" element={<SecurityGuard><Collections /></SecurityGuard>} />
-                  <Route path="/employees" element={<SecurityGuard><Employees /></SecurityGuard>} />
-                  <Route path="/budgets" element={<SecurityGuard><Budgets /></SecurityGuard>} />
-                  <Route path="/inventory" element={<SecurityGuard><Inventory /></SecurityGuard>} />
-                  <Route path="/settings" element={<SecurityGuard><Settings /></SecurityGuard>} />
-                  <Route path="/admin" element={<SecurityGuard><AdminPanel /></SecurityGuard>} />
-                </Route>
-              </Routes>
-            </Suspense>
-          </BrowserRouter>
-        </SettingsProvider>
-      </NotificationProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <NotificationProvider>
+          <SettingsProvider>
+            <BrowserRouter>
+              <Suspense fallback={<LoadingFallback />}>
+                <Routes>
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/onboarding" element={<Onboarding />} />
+                  
+                  <Route element={<Layout />}>
+                    <Route path="/" element={<SecurityGuard><Dashboard /></SecurityGuard>} />
+                    <Route path="/entry" element={<SecurityGuard><CheckEntry /></SecurityGuard>} />
+                    <Route path="/search" element={<SecurityGuard><CheckSearch /></SecurityGuard>} />
+                    <Route path="/sales" element={<SecurityGuard><Sales /></SecurityGuard>} />
+                    <Route path="/collections" element={<SecurityGuard><Collections /></SecurityGuard>} />
+                    <Route path="/employees" element={<SecurityGuard><Employees /></SecurityGuard>} />
+                    <Route path="/budgets" element={<SecurityGuard><Budgets /></SecurityGuard>} />
+                    <Route path="/inventory" element={<SecurityGuard><Inventory /></SecurityGuard>} />
+                    <Route path="/settings" element={<SecurityGuard><Settings /></SecurityGuard>} />
+                    <Route path="/admin" element={<SecurityGuard><AdminPanel /></SecurityGuard>} />
+                    <Route path="*" element={<SecurityGuard><NotFound /></SecurityGuard>} />
+                  </Route>
+                </Routes>
+              </Suspense>
+            </BrowserRouter>
+          </SettingsProvider>
+        </NotificationProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
+

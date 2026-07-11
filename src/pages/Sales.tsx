@@ -34,7 +34,7 @@ export default function Sales() {
   const { user, profile, originalUser } = useAuth();
   const { showToast, showConfirm } = useNotification();
 
-  const isSuperAdmin = profile?.role === 'ADMIN' || originalUser?.email === 'marcelogutama3eroa@gmail.com';
+  const isSuperAdmin = profile?.role === 'ADMIN' || originalUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
 
   const [enterprises, setEnterprises] = useState<{ id: string; name: string; email?: string }[]>([]);
   const [selectedEnterpriseId, setSelectedEnterpriseId] = useState<string>(''); // list filter

@@ -5,6 +5,7 @@ import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firest
 import { addDays, isAfter, parseISO } from 'date-fns';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { logAudit, AuditAction } from '../lib/audit';
+import { hashPin } from '../lib/utils';
 
 export interface UserProfile {
   name: string;
@@ -184,7 +185,12 @@ useEffect(() => {
     const targetUid = actualUser?.uid;
     const targetProfile = actualProfile;
     if (!targetUid || !targetProfile) return false;
-    if (targetProfile.pin === pin) {
+    
+    // For backwards compatibility during migration, check plain text or hash
+    const hashedPin = await hashPin(pin);
+    const isMatch = targetProfile.pin === hashedPin || targetProfile.pin === pin;
+    
+    if (isMatch) {
       try {
         await updateDoc(doc(db, 'users', targetUid), {
           lastPinEntry: serverTimestamp()
@@ -205,26 +211,32 @@ useEffect(() => {
     const activeUid = impersonatedUser ? impersonatedUser.uid : actualUser?.uid;
     if (!activeUid) return;
     
+    // Hash PIN if it is being updated
+    const dataToSave = { ...data };
+    if (dataToSave.pin) {
+      dataToSave.pin = await hashPin(dataToSave.pin);
+    }
+    
     const docRef = doc(db, 'users', activeUid);
     try {
       const docSnap = await getDoc(docRef);
       
       if (!docSnap.exists()) {
         const activeEmail = impersonatedUser ? impersonatedUser.email : (actualUser?.email || '');
-        const isAdminEmail = activeEmail === 'marcelogutama3eroa@gmail.com';
+        const isAdminEmail = activeEmail === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
         const newProfile = {
-          name: data.name || '',
-          ruc: data.ruc || '',
-          phone: data.phone || '',
+          name: dataToSave.name || '',
+          ruc: dataToSave.ruc || '',
+          phone: dataToSave.phone || '',
           email: activeEmail,
           role: isAdminEmail ? 'ADMIN' : 'USER',
           status: 'ENABLED',
           subscriptionEnd: addDays(new Date(), 90).toISOString(),
-          pin: data.pin || '',
+          pin: dataToSave.pin || '',
           pinInactivityLimit: 60,
           lastPinEntry: serverTimestamp(),
           createdAt: serverTimestamp(),
-          ...data
+          ...dataToSave
         };
         await setDoc(docRef, newProfile);
         setProfile(newProfile as unknown as UserProfile);
@@ -232,9 +244,9 @@ useEffect(() => {
           setActualProfile(newProfile as unknown as UserProfile);
         }
       } else {
-        await updateDoc(docRef, data);
-        if (profile) setProfile({ ...profile, ...data });
-        if (!impersonatedUser && actualProfile) setActualProfile({ ...actualProfile, ...data });
+        await updateDoc(docRef, dataToSave);
+        if (profile) setProfile({ ...profile, ...dataToSave });
+        if (!impersonatedUser && actualProfile) setActualProfile({ ...actualProfile, ...dataToSave });
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `users/${activeUid}`);
@@ -243,7 +255,7 @@ useEffect(() => {
 
   const impersonateUser = async (targetUser: { uid: string; email: string; displayName?: string } | null) => {
     if (!actualUser) return;
-    if (actualUser.email !== 'marcelogutama3eroa@gmail.com') {
+    if (actualUser.email !== import.meta.env.VITE_SUPER_ADMIN_EMAIL) {
       throw new Error('Solo el Super-Administrador absoluto puede iniciar una simulación de sesión.');
     }
 
@@ -292,9 +304,11 @@ useEffect(() => {
     displayName: impersonatedUser.displayName || '',
   } as unknown as FirebaseUser) : actualUser;
 
-  const isSuperAdminOriginal = actualUser?.email === 'marcelogutama3eroa@gmail.com';
-  const isAdmin = profile?.role === 'ADMIN' || effectiveUser?.email === 'marcelogutama3eroa@gmail.com';
-  const isExpired = profile ? !isAdmin && !isSuperAdminOriginal && (isAfter(new Date(), parseISO(profile.subscriptionEnd)) || profile.status === 'DISABLED') : false;
+  const isSuperAdminOriginal = actualUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
+  const isAdmin = profile?.role === 'ADMIN' || effectiveUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
+  const isExpired = profile 
+    ? (!isAdmin && !isSuperAdminOriginal && (isAfter(new Date(), parseISO(profile.subscriptionEnd)) || profile.status === 'DISABLED')) 
+    : (!!effectiveUser);
 
   return (
     <AuthContext.Provider value={{ 

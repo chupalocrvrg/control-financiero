@@ -1,5 +1,5 @@
 import { db } from '../firebase';
-import { collection, getDocs, setDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, getDoc, setDoc, doc } from 'firebase/firestore';
 
 export interface ChangelogRelease {
   version: string;
@@ -9,6 +9,43 @@ export interface ChangelogRelease {
 }
 
 export const staticChangelog: ChangelogRelease[] = [
+  {
+    version: '4.1.4',
+    date: '2026-07-11',
+    changes: [
+      'Optimización de UI: Los módulos de la barra lateral (Finanzas, Comercio) ahora inician colapsados por defecto para reducir el ruido visual en la interfaz.'
+    ]
+  },
+  {
+    version: '4.1.3',
+    date: '2026-07-11',
+    changes: [
+      'Limpieza de Código: Eliminación del componente no utilizado GlobalCommerceCard del panel de control.',
+      'Optimización de Dependencias: Eliminación de dependencias duplicadas en la configuración del proyecto.',
+      'Páginas de Error Globales: Incorporación de un capturador de errores (ErrorBoundary) y página 404 para evitar pantallas en blanco al fallar la carga de un módulo.',
+      'Optimización de Rendimiento de Arranque: Implementación de validación previa (getDoc) para evitar escrituras redundantes de versiones en Firestore.'
+    ]
+  },
+  {
+    version: '4.1.2',
+    date: '2026-07-11',
+    changes: [
+      'Autorización Estricta de Simulación: Se requiere el ingreso del PIN de administrador obligatoriamente antes de activar el modo de suplantación de cuenta.',
+      'Límites y Paginación de Consultas: Integración de filtros por fechas desde la base de datos limitando el flujo de información a 12 meses para acelerar la carga.',
+      'Estados Cautelares de Sesión: Si el perfil del usuario no se ha resuelto correctamente, el sistema asume estado inactivo/caducado, previniendo accesos temporales.',
+      'Filtros de Fechas Robustos: Transición de filtros lógicos usando comparación de strings a evaluación criptográfica en milisegundos evitando errores de sintaxis.'
+    ]
+  },
+  {
+    version: '4.1.1',
+    date: '2026-07-11',
+    changes: [
+      'Seguridad de Credenciales: Migración de correo administrador quemado en código a variable de entorno global segura.',
+      'Cifrado de PIN: Implementación de encriptación criptográfica SHA-256 para validación y almacenamiento del PIN de usuario.',
+      'Resolución de Excepciones Reactivas: Reorganización del orden de ejecución de hooks en el Dashboard de Inventario resolviendo inconsistencias.',
+      'Delegación de Permisos: Refinamiento de verificación de administrador dependiendo estrictamente de reglas robustas de datos y variables de entorno.'
+    ]
+  },
   {
     version: '4.1.0',
     date: '2026-07-11',
@@ -142,8 +179,13 @@ export async function getDynamicVersions(): Promise<ChangelogRelease[]> {
       const cleanV = v.version.replace(/^[Vv]/, '').trim();
       if (!firestoreCleanVersions.has(cleanV)) {
         try {
-          await saveNewVersion(v.version, v.changes);
-          console.log(`[Auto-Version] Automatically registered V${cleanV} in Firestore.`);
+          const normalizedVersion = v.version.startsWith('V') || v.version.startsWith('v') ? v.version : `V${v.version}`;
+          const versionDocRef = doc(db, 'versions', normalizedVersion);
+          const vDoc = await getDoc(versionDocRef);
+          if (!vDoc.exists()) {
+            await saveNewVersion(v.version, v.changes);
+            console.log(`[Auto-Version] Automatically registered V${cleanV} in Firestore.`);
+          }
         } catch (err) {
           console.error(`[Auto-Version] Failed to automatically register V${cleanV}:`, err);
         }

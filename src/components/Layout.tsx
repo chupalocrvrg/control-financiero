@@ -31,8 +31,8 @@ export default function Layout() {
   const { user, profile, loading, logout, isAdmin, impersonatedUser, impersonateUser, originalUser } = useAuth();
   const location = useLocation();
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
-    'Finanzas': true,
-    'Comercio': true,
+    'Finanzas': false,
+    'Comercio': false,
   });
 
   const toggleMenu = (menuName: string) => {
@@ -161,7 +161,7 @@ export default function Layout() {
         { name: 'Configuración', href: '/settings', icon: Settings },
       ];
 
-  const canAccessAdmin = originalUser?.email === 'marcelogutama3eroa@gmail.com';
+  const canAccessAdmin = originalUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
   if (canAccessAdmin && profile?.role !== 'BODEGUERO') {
     navigation.push({ name: 'Admin', href: '/admin', icon: Shield });
   }

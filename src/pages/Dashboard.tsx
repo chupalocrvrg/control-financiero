@@ -58,18 +58,6 @@ export default function Dashboard() {
   const { settings } = useSettings();
   const { showToast, showAlert } = useNotification();
 
-  if (profile?.role === 'BODEGUERO') {
-    return (
-      <div className="space-y-6">
-        <header className="mb-4">
-          <h1 className="text-3xl font-black text-neutral-900 dark:text-neutral-50 tracking-tight uppercase italic">Dashboard de Inventario</h1>
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">Monitoreo general de bodegas y stock</p>
-        </header>
-        <InventoryDashboard />
-      </div>
-    );
-  }
-
   const [loading, setLoading] = useState(true);
   const [checks, setChecks] = useState<Check[]>([]);
   const [selectedChecks, setSelectedChecks] = useState<Set<string>>(new Set());
@@ -126,19 +114,36 @@ export default function Dashboard() {
 
       const startOfMonthStr = format(startOfMonth(new Date()), 'yyyy-MM-dd');
       const endOfMonthStr = format(endOfMonth(new Date()), 'yyyy-MM-dd');
+      const historyStartStr = format(subMonths(startOfMonth(new Date()), 12), 'yyyy-MM-dd');
 
-      const allSalesQ = query(collection(db, 'sales'), where('enterpriseId', '==', currentEnterpriseId));
+      const allSalesQ = query(
+        collection(db, 'sales'), 
+        where('enterpriseId', '==', currentEnterpriseId),
+        where('date', '>=', historyStartStr)
+      );
       const allSalesSnap = await getDocs(allSalesQ);
       const allSalesData = allSalesSnap.docs.map(d => d.data());
       setAllSales(allSalesData);
 
-      const allCollQ = query(collection(db, 'collections'), where('enterpriseId', '==', currentEnterpriseId));
+      const allCollQ = query(
+        collection(db, 'collections'), 
+        where('enterpriseId', '==', currentEnterpriseId),
+        where('initialDate', '>=', historyStartStr)
+      );
       const allCollSnap = await getDocs(allCollQ);
       const allCollsData = allCollSnap.docs.map(d => d.data());
       setAllCollections(allCollsData);
 
-      const sales = allSalesData.filter(s => s.date >= startOfMonthStr && s.date <= endOfMonthStr);
-      const colls = allCollsData.filter(c => c.initialDate >= startOfMonthStr && c.initialDate <= endOfMonthStr);
+      const sales = allSalesData.filter(s => {
+        if (!s.date) return false;
+        const time = parseISO(s.date).getTime();
+        return time >= parseISO(startOfMonthStr).getTime() && time <= parseISO(endOfMonthStr).getTime();
+      });
+      const colls = allCollsData.filter(c => {
+        if (!c.initialDate) return false;
+        const time = parseISO(c.initialDate).getTime();
+        return time >= parseISO(startOfMonthStr).getTime() && time <= parseISO(endOfMonthStr).getTime();
+      });
 
       const commerceArray = employees.map(emp => {
         const empBudgets = budgets.filter(b => b.employeeId === emp.id);
@@ -414,27 +419,44 @@ const handleGenerateAdvancedReport = async (reportType: 'pdf' | 'excel') => {
     try {
       const start = startOfDay(parseISO(reportStartDate));
       const end = startOfDay(parseISO(reportEndDate));
+      const startMs = start.getTime();
+      const endMs = end.getTime();
       
       const currentEnterpriseId = profile?.enterpriseId || user?.uid;
 
-      const checksQ = query(collection(db, 'checks'), where('userId', '==', user.uid));
+      const checksQ = query(
+        collection(db, 'checks'), 
+        where('userId', '==', user.uid),
+        where('dueDate', '>=', reportStartDate),
+        where('dueDate', '<=', reportEndDate)
+      );
       const checksSnap = await getDocs(checksQ);
       const filteredChecks = checksSnap.docs
         .map(d => ({ id: d.id, ...d.data() }) as any)
-        .filter(c => c.dueDate >= reportStartDate && c.dueDate <= reportEndDate && ['PENDING', 'PAID'].includes(c.status))
-        .sort((a, b) => parseISO(a.dueDate).getTime() - parseISO(b.dueDate).getTime());
+        .filter(c => ['PENDING', 'PAID'].includes(c.status))
+        .sort((a, b) => {
+           const timeA = a.dueDate ? parseISO(a.dueDate).getTime() : 0;
+           const timeB = b.dueDate ? parseISO(b.dueDate).getTime() : 0;
+           return timeA - timeB;
+        });
 
-      const salesQ = query(collection(db, 'sales'), where('enterpriseId', '==', currentEnterpriseId));
+      const salesQ = query(
+        collection(db, 'sales'), 
+        where('enterpriseId', '==', currentEnterpriseId),
+        where('date', '>=', reportStartDate),
+        where('date', '<=', reportEndDate)
+      );
       const salesSnap = await getDocs(salesQ);
-      const salesData = salesSnap.docs
-        .map(d => d.data())
-        .filter(s => s.date >= reportStartDate && s.date <= reportEndDate);
+      const salesData = salesSnap.docs.map(d => d.data());
 
-      const collQ = query(collection(db, 'collections'), where('enterpriseId', '==', currentEnterpriseId));
+      const collQ = query(
+        collection(db, 'collections'), 
+        where('enterpriseId', '==', currentEnterpriseId),
+        where('initialDate', '>=', reportStartDate),
+        where('initialDate', '<=', reportEndDate)
+      );
       const collSnap = await getDocs(collQ);
-      const collsData = collSnap.docs
-        .map(d => d.data())
-        .filter(c => c.initialDate >= reportStartDate && c.initialDate <= reportEndDate);
+      const collsData = collSnap.docs.map(d => d.data());
 
       const empQ = query(collection(db, 'employees'), where('enterpriseId', '==', currentEnterpriseId));
       const empSnap = await getDocs(empQ);
@@ -758,6 +780,18 @@ const handleGenerateAdvancedReport = async (reportType: 'pdf' | 'excel') => {
 
     doc.save(`Reporte_Personalizado_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`);
   };
+
+  if (profile?.role === 'BODEGUERO') {
+    return (
+      <div className="space-y-6">
+        <header className="mb-4">
+          <h1 className="text-3xl font-black text-neutral-900 dark:text-neutral-50 tracking-tight uppercase italic">Dashboard de Inventario</h1>
+          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">Monitoreo general de bodegas y stock</p>
+        </header>
+        <InventoryDashboard />
+      </div>
+    );
+  }
 
   if (loading) return (
     <div className="flex h-64 items-center justify-center">
