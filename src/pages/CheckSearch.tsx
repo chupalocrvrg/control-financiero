@@ -9,6 +9,7 @@ import { format, parseISO } from 'date-fns';
 import { Download, Search, ChevronDown, ChevronRight, FilterX, FileText, CheckCircle2, AlertCircle, Trash2, RotateCcw, Trash, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
+import { isSuperAdminEmail } from '../lib/utils';
 
 interface Invoice {
   id: string;
@@ -43,7 +44,7 @@ export default function CheckSearch() {
   const [selectedEnterpriseId, setSelectedEnterpriseId] = useState<string>('');
   const [enterprises, setEnterprises] = useState<{ id: string; name: string; email?: string }[]>([]);
 
-  const isSuperAdmin = profile?.role === 'ADMIN' || originalUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
+  const isSuperAdmin = profile?.role === 'ADMIN' || isSuperAdminEmail(originalUser?.email);
 
   const defaultEnterpriseId = profile?.role === 'enterprise'
     ? user?.uid

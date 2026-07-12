@@ -57,3 +57,15 @@ export async function hashPin(pin: string): Promise<string> {
   const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   return hashHex;
 }
+
+export const SUPER_ADMIN_EMAILS = [
+  import.meta.env.VITE_SUPER_ADMIN_EMAIL,
+  'marcelogutama3eroa@gmail.com',
+  'blacksirius869@gmail.com'
+].filter(Boolean) as string[];
+
+export function isSuperAdminEmail(email?: string | null): boolean {
+  if (!email) return false;
+  return SUPER_ADMIN_EMAILS.includes(email);
+}
+

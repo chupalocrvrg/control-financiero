@@ -6,6 +6,7 @@ import { addDays, isAfter, parseISO } from 'date-fns';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { logAudit, AuditAction } from '../lib/audit';
 import { hashPin } from '../lib/utils';
+import { isSuperAdminEmail } from '../lib/utils';
 
 export interface UserProfile {
   name: string;
@@ -223,7 +224,7 @@ useEffect(() => {
       
       if (!docSnap.exists()) {
         const activeEmail = impersonatedUser ? impersonatedUser.email : (actualUser?.email || '');
-        const isAdminEmail = activeEmail === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
+        const isAdminEmail = isSuperAdminEmail(activeEmail);
         const newProfile = {
           name: dataToSave.name || '',
           ruc: dataToSave.ruc || '',
@@ -238,7 +239,7 @@ useEffect(() => {
           createdAt: serverTimestamp(),
           ...dataToSave
         };
-        await setDoc(docRef, newProfile);
+        console.log("newProfile", newProfile); console.log("Creating new profile:", JSON.stringify(newProfile, null, 2)); await setDoc(docRef, newProfile);
         setProfile(newProfile as unknown as UserProfile);
         if (!impersonatedUser) {
           setActualProfile(newProfile as unknown as UserProfile);
@@ -255,7 +256,7 @@ useEffect(() => {
 
   const impersonateUser = async (targetUser: { uid: string; email: string; displayName?: string } | null) => {
     if (!actualUser) return;
-    if (actualUser.email !== import.meta.env.VITE_SUPER_ADMIN_EMAIL) {
+    if (!isSuperAdminEmail(actualUser.email)) {
       throw new Error('Solo el Super-Administrador absoluto puede iniciar una simulación de sesión.');
     }
 
@@ -304,8 +305,8 @@ useEffect(() => {
     displayName: impersonatedUser.displayName || '',
   } as unknown as FirebaseUser) : actualUser;
 
-  const isSuperAdminOriginal = actualUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
-  const isAdmin = profile?.role === 'ADMIN' || effectiveUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
+  const isSuperAdminOriginal = isSuperAdminEmail(actualUser?.email);
+  const isAdmin = profile?.role === 'ADMIN' || isSuperAdminEmail(effectiveUser?.email);
   const isExpired = profile 
     ? (!isAdmin && !isSuperAdminOriginal && (isAfter(new Date(), parseISO(profile.subscriptionEnd)) || profile.status === 'DISABLED')) 
     : (!!effectiveUser);

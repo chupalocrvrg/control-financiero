@@ -10,6 +10,29 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: '4.1.7',
+    date: '2026-07-11',
+    changes: [
+      'Corrección de Simulación de Sesión: Se ha resuelto el problema que impedía realizar acciones administrativas (como modificar o vaciar datos) al simular un usuario, debido a una validación errónea contra el PIN del usuario simulado en lugar del administrador.'
+    ]
+  },
+
+  {
+    version: '4.1.6',
+    date: '2026-07-11',
+    changes: [
+      'Autorización de Super-Admin: Expansión de las reglas de Firestore para reconocer múltiples cuentas maestras de administrador y validaciones relajadas en campos opcionales del perfil.',
+      'Resolución Onboarding: Solución al problema que impedía crear nuevos perfiles debido al bloqueo por rol de administrador.'
+    ]
+  },
+  {
+    version: '4.1.5',
+    date: '2026-07-11',
+    changes: [
+      'Resolución de Seguridad: Corrección de las reglas de seguridad de Firestore para aceptar la creación de usuarios con PIN encriptado en formato hexadecimal SHA-256.'
+    ]
+  },
+  {
     version: '4.1.4',
     date: '2026-07-11',
     changes: [

@@ -11,6 +11,7 @@ import { Upload, FileSpreadsheet, X, Calculator, CreditCard, Calendar, User, Tag
 import * as XLSX from 'xlsx';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { logAudit, AuditAction } from '../lib/audit';
+import { isSuperAdminEmail } from '../lib/utils';
 
 export default function CheckEntry() {
   const { user, profile, originalUser } = useAuth();
@@ -23,7 +24,7 @@ export default function CheckEntry() {
   const [enterprises, setEnterprises] = useState<{ id: string; name: string; email?: string }[]>([]);
   const [selectedEnterpriseId, setSelectedEnterpriseId] = useState<string>('');
 
-  const isSuperAdmin = profile?.role === 'ADMIN' || originalUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
+  const isSuperAdmin = profile?.role === 'ADMIN' || isSuperAdminEmail(originalUser?.email);
 
   const [formData, setFormData] = useState({
     beneficiaryName: '',

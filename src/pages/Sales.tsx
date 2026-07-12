@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, ShoppingCart, AlertCircle, Save, X, Calendar, Use
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { format } from 'date-fns';
+import { isSuperAdminEmail } from '../lib/utils';
 
 interface Employee {
   id: string;
@@ -34,7 +35,7 @@ export default function Sales() {
   const { user, profile, originalUser } = useAuth();
   const { showToast, showConfirm } = useNotification();
 
-  const isSuperAdmin = profile?.role === 'ADMIN' || originalUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
+  const isSuperAdmin = profile?.role === 'ADMIN' || isSuperAdminEmail(originalUser?.email);
 
   const [enterprises, setEnterprises] = useState<{ id: string; name: string; email?: string }[]>([]);
   const [selectedEnterpriseId, setSelectedEnterpriseId] = useState<string>(''); // list filter

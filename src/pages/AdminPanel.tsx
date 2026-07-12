@@ -11,6 +11,7 @@ import { Users, User, Shield, Calendar, Eye, Ban, CheckCircle, Search, Edit3, X,
 import * as XLSX from 'xlsx';
 import { getDynamicVersions, ChangelogRelease } from '../lib/changelog';
 import { logAudit, AuditAction } from '../lib/audit';
+import { isSuperAdminEmail } from '../lib/utils';
 
 interface UserData {
   id: string;
@@ -24,7 +25,7 @@ interface UserData {
 }
 
 export default function AdminPanel() {
-  const { user, isAdmin, profile, impersonateUser, originalUser } = useAuth();
+  const { user, isAdmin, profile, impersonateUser, originalUser, verifyPin } = useAuth();
   const { settings } = useSettings();
   const { showToast, showAlert, showConfirm } = useNotification();
   const [users, setUsers] = useState<UserData[]>([]);
@@ -69,7 +70,7 @@ export default function AdminPanel() {
     bank: '',
   });
 
-  const isSuperAdmin = originalUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
+  const isSuperAdmin = isSuperAdminEmail(originalUser?.email);
 
   // Personal & Budget Migration Tool States
   const [migrationEmployees, setMigrationEmployees] = useState<any[]>([]);
@@ -511,19 +512,11 @@ export default function AdminPanel() {
     }
     setLoading(true);
     try {
-      const { hashPin } = await import('../lib/utils');
-      const hashedPin = await hashPin(impersonatePinValue);
-      if (originalUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL) {
-        // Find super admin's PIN. originalUser is FirebaseUser, we need the DB document
-        const superAdminDoc = await getDoc(doc(db, 'users', originalUser.uid));
-        if (superAdminDoc.exists()) {
-          const superAdminData = superAdminDoc.data();
-          if (superAdminData.pin !== hashedPin && superAdminData.pin !== impersonatePinValue) {
-             showAlert("PIN Incorrecto", "El PIN de administrador ingresado no es correcto.", "error");
-             setLoading(false);
-             return;
-          }
-        }
+      const isValid = await verifyPin(impersonatePinValue);
+      if (!isValid) {
+        showAlert("PIN Incorrecto", "El PIN de administrador ingresado no es correcto.", "error");
+        setLoading(false);
+        return;
       }
       
       if (impersonateTargetUser) {
@@ -545,18 +538,15 @@ export default function AdminPanel() {
       return;
     }
     
-    if (!profile?.pin) {
-      showAlert("PIN no configurado", "Error: Tu perfil de administrador no tiene un PIN configurado. Por favor, configúralo en ajustes.", "error");
-      return;
-    }
-
-    if (migratePinValue !== profile.pin) {
-      showAlert("PIN Incorrecto", "El PIN de administrador ingresado es incorrecto.", "error");
-      return;
-    }
-    
     setLoading(true);
     try {
+      const isValid = await verifyPin(migratePinValue);
+      if (!isValid) {
+        showAlert("PIN Incorrecto", "El PIN de administrador ingresado es incorrecto o no está configurado.", "error");
+        setLoading(false);
+        return;
+      }
+
       const checksPath = 'checks';
       const checksQ = query(collection(db, checksPath), where('userId', '==', selectedUser.id));
       const checksSnaps = await getDocs(checksQ);
@@ -610,19 +600,15 @@ export default function AdminPanel() {
   const handleVaciarBaseDatos = async () => {
     if (!selectedUser) return;
     
-    // Safety check for admin pin
-    if (!profile?.pin) {
-      showAlert("PIN no configurado", "Error: Tu perfil de administrador no tiene un PIN configurado. Por favor, configúralo en ajustes.", "error");
-      return;
-    }
-
-    if (adminPinValue !== profile.pin) {
-      showAlert("PIN Incorrecto", "PIN de administrador incorrecto.", "error");
-      return;
-    }
-    
     setLoading(true);
     try {
+      const isValid = await verifyPin(adminPinValue);
+      if (!isValid) {
+        showAlert("PIN Incorrecto", "El PIN de administrador ingresado es incorrecto o no está configurado.", "error");
+        setLoading(false);
+        return;
+      }
+
       console.log(`Iniciando vaciado de datos para: ${selectedUser.name} (${selectedUser.id})`);
       
       // Fetch checks
@@ -672,18 +658,15 @@ export default function AdminPanel() {
   const handleDeleteUser = async () => {
     if (!selectedUser) return;
     
-    if (!profile?.pin) {
-      showAlert("PIN no configurado", "Error: Tu perfil de administrador no tiene un PIN configurado. Por favor, configúralo en ajustes.", "error");
-      return;
-    }
-
-    if (deleteUserPinValue !== profile.pin) {
-      showAlert("PIN Incorrecto", "PIN de administrador incorrecto.", "error");
-      return;
-    }
-    
     setLoading(true);
     try {
+      const isValid = await verifyPin(deleteUserPinValue);
+      if (!isValid) {
+        showAlert("PIN Incorrecto", "El PIN de administrador ingresado es incorrecto o no está configurado.", "error");
+        setLoading(false);
+        return;
+      }
+
       console.log(`Iniciando eliminación total del usuario: ${selectedUser.name} (${selectedUser.id})`);
       
       const { writeBatch } = await import('firebase/firestore');
@@ -864,7 +847,7 @@ export default function AdminPanel() {
     c.concept?.toLowerCase().includes(checkSearchTerm.toLowerCase())
   );
 
-  if (originalUser?.email !== import.meta.env.VITE_SUPER_ADMIN_EMAIL) {
+  if (!isSuperAdminEmail(originalUser?.email)) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
         <Ban className="w-16 h-16 text-red-500 animate-pulse" />
@@ -1216,7 +1199,7 @@ export default function AdminPanel() {
                     </td>
                     <td className="px-8 py-6 text-right">
                       <div className="flex justify-end items-center gap-2">
-                        {originalUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL && (
+                        {isSuperAdminEmail(originalUser?.email) && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1253,7 +1236,7 @@ export default function AdminPanel() {
                 <div className="space-y-4">
                   <label className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] block">Comandos de Energía</label>
                   <div className="grid grid-cols-1 gap-3">
-                    {originalUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL && (
+                    {isSuperAdminEmail(originalUser?.email) && (
                       <button 
                         onClick={() => {
                           setImpersonateTargetUser(selectedUser);
@@ -1287,7 +1270,7 @@ export default function AdminPanel() {
                       <span>Gestionar PIN</span>
                       <Lock className="w-5 h-5 opacity-40 group-hover:opacity-100" />
                     </button>
-                    {user?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL && (
+                    {isSuperAdminEmail(user?.email) && (
                       <>
                         <button 
                           onClick={() => {

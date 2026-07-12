@@ -26,6 +26,7 @@ import { useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { CURRENT_VERSION } from '../lib/changelog';
+import { isSuperAdminEmail } from '../lib/utils';
 
 export default function Layout() {
   const { user, profile, loading, logout, isAdmin, impersonatedUser, impersonateUser, originalUser } = useAuth();
@@ -161,7 +162,7 @@ export default function Layout() {
         { name: 'Configuración', href: '/settings', icon: Settings },
       ];
 
-  const canAccessAdmin = originalUser?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
+  const canAccessAdmin = isSuperAdminEmail(originalUser?.email);
   if (canAccessAdmin && profile?.role !== 'BODEGUERO') {
     navigation.push({ name: 'Admin', href: '/admin', icon: Shield });
   }
