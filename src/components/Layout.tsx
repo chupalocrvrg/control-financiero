@@ -181,9 +181,12 @@ export default function Layout() {
           <div className="h-10 w-10 bg-indigo-600 dark:bg-indigo-500 rounded-xl flex items-center justify-center mr-3 shadow-lg shadow-indigo-200 dark:shadow-none">
             <CheckCircle className="h-6 w-6 text-white" />
           </div>
-          <span className="text-lg font-bold text-neutral-900 dark:text-neutral-50 truncate">
-            {profile?.name || 'Control Cheques'}
-          </span>
+          <div className="flex flex-col truncate">
+            <span className="text-lg font-bold text-neutral-900 dark:text-neutral-50 truncate">
+              {profile?.name || 'Control 360°'}
+            </span>
+            {(!profile?.name) && <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mt-0.5">by Trennd</span>}
+          </div>
         </div>
         
         <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
@@ -274,7 +277,7 @@ export default function Layout() {
             Cerrar Sesión
           </button>
           <div className="pt-2">
-            <p className="text-[9px] text-neutral-400 dark:text-neutral-600 font-mono text-center tracking-widest uppercase">Control Financiero v{CURRENT_VERSION}</p>
+            <p className="text-[9px] text-neutral-400 dark:text-neutral-600 font-mono text-center tracking-widest uppercase">Control 360° v{CURRENT_VERSION}</p>
           </div>
         </div>
       </div>
@@ -286,7 +289,7 @@ export default function Layout() {
             <CheckCircle className="h-5 w-5 text-white" />
           </div>
           <span className="font-bold text-neutral-900 dark:text-neutral-50 truncate max-w-[150px]">
-            {profile?.name || 'Control Cheques'}
+            {profile?.name || 'Control 360°'}
           </span>
         </div>
         <button
@@ -308,7 +311,7 @@ export default function Layout() {
               </span>
               <p className="text-xs md:text-sm tracking-wide">
                 <span className="font-black uppercase bg-indigo-950/50 px-2 py-0.5 rounded text-[9px] mr-2">Simulación Activa</span>
-                Interactuando como <span className="font-bold underline">{profile?.name || impersonatedUser.displayName || 'Control Cheques'}</span> (<span className="font-mono text-xs text-indigo-200">{impersonatedUser.email}</span>)
+                Interactuando como <span className="font-bold underline">{profile?.name || impersonatedUser.displayName || 'Control 360°'}</span> (<span className="font-mono text-xs text-indigo-200">{impersonatedUser.email}</span>)
               </p>
             </div>
             <button

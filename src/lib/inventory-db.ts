@@ -16,6 +16,65 @@ import {
  * Uses a batch to ensure atomicity.
  */
 export async function adjustStockAndGlobalQuantity(
+  batch: any,
+  warehouseId: string,
+  articleId: string,
+  quantityChange: number,
+  userId: string,
+  seriesListChange?: string[]
+) {
+  const invId = `${warehouseId}_${articleId}`;
+  const invRef = doc(db, 'warehouse_inventory', invId);
+  const invSnap = await getDoc(invRef);
+  
+  let currentInvQty = 0;
+  let currentInvSeries: string[] = [];
+  if (invSnap.exists()) {
+    currentInvQty = invSnap.data().quantity || 0;
+    currentInvSeries = invSnap.data().seriesList || [];
+  }
+  
+  const newInvQty = Math.max(0, currentInvQty + quantityChange);
+  let newInvSeries = [...currentInvSeries];
+  if (seriesListChange && seriesListChange.length > 0) {
+    if (quantityChange > 0) {
+      newInvSeries = [...newInvSeries, ...seriesListChange];
+    } else {
+      newInvSeries = newInvSeries.filter(s => !seriesListChange.includes(s));
+    }
+  }
+
+  batch.set(invRef, {
+    id: invId,
+    warehouseId,
+    articleId,
+    quantity: newInvQty,
+    seriesList: newInvSeries,
+    userId
+  }, { merge: true });
+
+  // Update global article stock
+  const articleRef = doc(db, 'articles', articleId);
+  const articleSnap = await getDoc(articleRef);
+  if (articleSnap.exists()) {
+    const currentGlobalQty = articleSnap.data().quantity || 0;
+    const newGlobalQty = Math.max(0, currentGlobalQty + quantityChange);
+    
+    let currentGlobalSeries = articleSnap.data().seriesList || [];
+    let newGlobalSeries = [...currentGlobalSeries];
+    if (seriesListChange && seriesListChange.length > 0) {
+      if (quantityChange > 0) {
+        newGlobalSeries = [...newGlobalSeries, ...seriesListChange];
+      } else {
+        newGlobalSeries = newGlobalSeries.filter(s => !seriesListChange.includes(s));
+      }
+    }
+
+    batch.update(articleRef, { quantity: newGlobalQty, seriesList: newGlobalSeries });
+  }
+}
+
+/*
   batch: any, 
   warehouseId: string, 
   articleId: string, 
@@ -51,6 +110,7 @@ export async function adjustStockAndGlobalQuantity(
   }
 }
 
+*/
 /**
  * Executes a warehouse-to-warehouse stock transfer.
  */
@@ -58,7 +118,7 @@ export async function executeTransfer(
   userId: string,
   fromWarehouseId: string,
   toWarehouseId: string,
-  articlesList: Array<{ articleId: string; quantity: number }>,
+  articlesList: Array<{ articleId: string; quantity: number; seriesList?: string[] }>,
   reason: string,
   comment: string
 ) {
@@ -78,9 +138,9 @@ export async function executeTransfer(
     const artSeries = artSnap.exists() ? artSnap.data().series || '' : '';
 
     // Subtract from source warehouse
-    await adjustStockAndGlobalQuantity(batch, fromWarehouseId, item.articleId, -item.quantity, userId);
+    await adjustStockAndGlobalQuantity(batch, fromWarehouseId, item.articleId, -item.quantity, userId, item.seriesList);
     // Add to target warehouse
-    await adjustStockAndGlobalQuantity(batch, toWarehouseId, item.articleId, item.quantity, userId);
+    await adjustStockAndGlobalQuantity(batch, toWarehouseId, item.articleId, item.quantity, userId, item.seriesList);
 
     detailedArticles.push({
       articleId: item.articleId,
@@ -116,7 +176,7 @@ export async function executeLoanReturn(
   commercialHouse: string,
   warehouseId: string, // optional/empty if direct sale & type === 'LOAN'
   isDirectSale: boolean,
-  articlesList: Array<{ articleId: string; quantity: number }>,
+  articlesList: Array<{ articleId: string; quantity: number; seriesList?: string[] }>,
   personName: string,
   comment: string
 ) {
@@ -138,7 +198,7 @@ export async function executeLoanReturn(
       // Loan: We receive items
       if (!isDirectSale && warehouseId) {
         // Enters the warehouse
-        await adjustStockAndGlobalQuantity(batch, warehouseId, item.articleId, item.quantity, userId);
+        await adjustStockAndGlobalQuantity(batch, warehouseId, item.articleId, item.quantity, userId, item.seriesList);
       } else {
         // Direct sale: doesn't enter warehouse but still updates the global count/logs
         const articleRef = doc(db, 'articles', item.articleId);
@@ -151,7 +211,7 @@ export async function executeLoanReturn(
       // Return: We deliver items back
       if (warehouseId) {
         // Subtracted from warehouse
-        await adjustStockAndGlobalQuantity(batch, warehouseId, item.articleId, -item.quantity, userId);
+        await adjustStockAndGlobalQuantity(batch, warehouseId, item.articleId, -item.quantity, userId, item.seriesList);
       }
     }
 
@@ -189,7 +249,7 @@ export async function executeInventorySale(
   clientName: string,
   sellerId: string,
   sellerName: string,
-  soldItemsList: Array<{ articleId: string; quantity: number; warehouseId: string; isGift: boolean }>
+  soldItemsList: Array<{ articleId: string; quantity: number; warehouseId: string; isGift: boolean; seriesList?: string[] }>
 ) {
   const batch = writeBatch(db);
   const detailedSoldArticles = [];
@@ -202,7 +262,7 @@ export async function executeInventorySale(
     const artName = artSnap.exists() ? artSnap.data().name : 'Artículo';
 
     // Deduct stock (both sold and gift items deduct from warehouse)
-    await adjustStockAndGlobalQuantity(batch, item.warehouseId, item.articleId, -item.quantity, userId);
+    await adjustStockAndGlobalQuantity(batch, item.warehouseId, item.articleId, -item.quantity, userId, item.seriesList);
 
     detailedSoldArticles.push({
       articleId: item.articleId,
@@ -262,9 +322,9 @@ export async function revertTransfer(transferId: string, userId: string, revertR
     });
 
     // Add stock back to the original source warehouse (fromWarehouseId)
-    await adjustStockAndGlobalQuantity(batch, fromWarehouseId, item.articleId, qToRevert, userId);
+    await adjustStockAndGlobalQuantity(batch, fromWarehouseId, item.articleId, qToRevert, userId, item.seriesList);
     // Subtract stock from target warehouse (toWarehouseId)
-    await adjustStockAndGlobalQuantity(batch, toWarehouseId, item.articleId, -qToRevert, userId);
+    await adjustStockAndGlobalQuantity(batch, toWarehouseId, item.articleId, -qToRevert, userId, item.seriesList);
   }
 
   // Update transfer document status
@@ -318,7 +378,7 @@ export async function revertLoanReturn(loanReturnId: string, userId: string, rev
         });
         
         // Subtract from warehouse
-        await adjustStockAndGlobalQuantity(batch, warehouseId, item.articleId, -qToRevert, userId);
+        await adjustStockAndGlobalQuantity(batch, warehouseId, item.articleId, -qToRevert, userId, item.seriesList);
       } else {
         // Direct sale: subtract from global only
         const qToRevert = Math.min(item.quantity, currentGlobalQty);
@@ -342,7 +402,7 @@ export async function revertLoanReturn(loanReturnId: string, userId: string, rev
         actual: item.quantity
       });
       if (warehouseId) {
-        await adjustStockAndGlobalQuantity(batch, warehouseId, item.articleId, item.quantity, userId);
+        await adjustStockAndGlobalQuantity(batch, warehouseId, item.articleId, item.quantity, userId, item.seriesList);
       }
     }
   }
@@ -375,7 +435,7 @@ export async function revertInventorySale(saleId: string, userId: string, revert
 
   for (const item of soldArticles) {
     // Originally deducted stock from item.warehouseId. To revert: add it back!
-    await adjustStockAndGlobalQuantity(batch, item.warehouseId, item.articleId, item.quantity, userId);
+    await adjustStockAndGlobalQuantity(batch, item.warehouseId, item.articleId, item.quantity, userId, item.seriesList);
   }
 
   // Update document status

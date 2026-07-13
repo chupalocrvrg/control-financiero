@@ -10,6 +10,50 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: '4.2.3',
+    date: new Date().toISOString().split('T')[0],
+    changes: [
+      'Validación Estricta de Código de Barras: Se añadió un cuadro de diálogo de confirmación obligatorio en Ingreso de Mercadería al detectar un código de barras ya registrado, previniendo duplicados.',
+      'Mejora UI Ventas de Almacén: Reemplazada la lista desplegable nativa de artículos por el selector inteligente con búsqueda y soporte integrado para selección de series y lotes.'
+    ]
+  },
+
+  {
+    version: '4.2.2',
+    date: new Date().toISOString().split('T')[0],
+    changes: [
+      'Actualización del nombre automático: El nombre de un artículo ahora se genera automáticamente utilizando la fórmula Categoría + Marca + Modelo + Código de Barras (opcional) de forma estandarizada.'
+    ]
+  },
+
+  {
+    version: '4.2.1',
+    date: new Date().toISOString().split('T')[0],
+    changes: [
+      'Nombre Automático de Artículo: El campo "Nombre del Artículo" en el formulario de Ingreso de Mercadería ahora es de solo lectura y se genera automáticamente combinando la Marca y el Modelo ingresados, evitando errores de tipeo y asegurando un formato estandarizado.'
+    ]
+  },
+
+  {
+    version: '4.2.0',
+    date: '2026-07-11',
+    changes: [
+      'Búsqueda Predictiva: Se reemplazaron las listas desplegables convencionales en Transferencias, Préstamos y Ventas por un nuevo componente avanzado de autocompletado y búsqueda predictiva (por nombre, modelo, marca y código de barras).',
+      'Soporte de Códigos de Barras: Opción para enlazar artículos a códigos de barras que facilita el ingreso y salida de inventario rápido mediante escáneres.',
+      'Control Estricto de Series: Implementación de la opción "Requerir Series/Seriales" para artículos de alto valor. Si se habilita, fuerza a ingresar o seleccionar exactamente los seriales de cada unidad individual que ingrese o salga de bodega.',
+      'Ingreso Inteligente: El botón "Nuevo Artículo" se renombró a "Ingreso de Mercadería" y ahora detecta si un artículo ya existe para simplemente agregar el nuevo stock sin duplicar datos en la base principal.'
+    ]
+  },
+
+  {
+    version: '4.1.8',
+    date: '2026-07-11',
+    changes: [
+      'Rebranding de la aplicación: Cambio general del nombre "HQ Intelligence" y otros nombres genéricos a "Control 360°", incluyendo la firma "by Trennd".'
+    ]
+  },
+
+  {
     version: '4.1.7',
     date: '2026-07-11',
     changes: [

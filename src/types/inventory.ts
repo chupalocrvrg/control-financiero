@@ -2,7 +2,8 @@ export interface Article {
   id: string;
   name: string;
   quantity: number; // Total quantity across all warehouses
-  series?: string; // Optional serial number
+  requiresSeries?: boolean; // Whether this article requires serial numbers
+  seriesList?: string[]; // Array of available serial numbers globally
   minStockAlert: number; // Required minimum stock for alert
   category?: string; // Predictive category (cocinas, neveras, etc.)
   brand?: string; // Predictive brand
@@ -25,6 +26,7 @@ export interface WarehouseInventory {
   warehouseId: string;
   articleId: string;
   quantity: number;
+  seriesList?: string[]; // Array of serial numbers available in this warehouse
   userId: string;
 }
 
@@ -32,7 +34,7 @@ export interface TransferArticle {
   articleId: string;
   name: string;
   quantity: number;
-  series?: string;
+  seriesList?: string[];
 }
 
 export interface Transfer {
@@ -52,7 +54,7 @@ export interface LoanReturnArticle {
   articleId: string;
   name: string;
   quantity: number;
-  series?: string;
+  seriesList?: string[];
 }
 
 export interface LoanReturn {
@@ -76,6 +78,7 @@ export interface SoldArticle {
   warehouseId: string;
   warehouseName: string;
   isGift: boolean;
+  seriesList?: string[];
 }
 
 export interface InventorySale {

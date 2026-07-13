@@ -1079,7 +1079,8 @@ export default function AdminPanel() {
             <ShieldCheck className="w-8 h-8" />
           </div>
           <div>
-            <h1 className="text-3xl font-black text-neutral-900 dark:text-neutral-50 tracking-tighter uppercase italic">HQ Intelligence</h1>
+            <h1 className="text-3xl font-black text-neutral-900 dark:text-neutral-50 tracking-tighter uppercase italic">Control 360°</h1>
+            <p className="text-[10px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-[0.2em] mb-1">by Trennd</p>
             <p className="text-neutral-500 dark:text-neutral-400 text-sm font-medium">Panel de Control de Membresías y Seguridad.</p>
           </div>
         </div>

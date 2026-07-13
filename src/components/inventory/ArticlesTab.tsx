@@ -19,13 +19,14 @@ export default function ArticlesTab() {
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
+  const [matchedArticle, setMatchedArticle] = useState<Article | null>(null);
   const [formData, setFormData] = useState({
-    name: '',
     category: '',
     brand: '',
     model: '',
-    series: '',
     barcode: '',
+    requiresSeries: false,
+    seriesInput: '',
     minStockAlert: 5,
     initialQuantity: 0,
     initialWarehouseId: ''
@@ -71,43 +72,65 @@ export default function ArticlesTab() {
     if (article) {
       setEditingArticle(article);
       setFormData({
-        name: article.name,
-        category: article.category || '',
-        brand: article.brand || '',
-        model: article.model || '',
-        series: article.series || '',
-        barcode: article.barcode || '',
-        minStockAlert: article.minStockAlert,
-        initialQuantity: article.quantity,
-        initialWarehouseId: '' // No initial warehouse edit after creation
-      });
-    } else {
-      setEditingArticle(null);
-      setFormData({
-        name: '',
         category: '',
         brand: '',
         model: '',
-        series: '',
         barcode: '',
-        minStockAlert: 5, // reasonable default alert threshold
+        minStockAlert: 5,
         initialQuantity: 0,
-        initialWarehouseId: warehouses[0]?.id || ''
+        initialWarehouseId: warehouses[0]?.id || '',
+        requiresSeries: false,
+        seriesInput: ''
       });
     }
     setIsModalOpen(true);
   };
 
+  useEffect(() => {
+    if (editingArticle || !isModalOpen) {
+      setMatchedArticle(null);
+      return;
+    }
+    
+    let match = null;
+    if (formData.barcode && formData.barcode.trim()) {
+      match = articles.find(a => a.barcode?.toLowerCase() === formData.barcode.trim().toLowerCase()) || null;
+    } 
+    if (!match && formData.model && formData.brand && formData.model.trim() && formData.brand.trim()) {
+      match = articles.find(a => a.model?.toLowerCase() === formData.model.trim().toLowerCase() && a.brand?.toLowerCase() === formData.brand.trim().toLowerCase()) || null;
+    }
+
+    if (match) {
+      setMatchedArticle(match);
+      setFormData(prev => ({
+        ...prev,
+        category: prev.category || match!.category || '',
+        brand: prev.brand || match!.brand || '',
+        model: prev.model || match!.model || '',
+        barcode: prev.barcode || match!.barcode || '',
+        requiresSeries: match!.requiresSeries || false
+      }));
+    } else {
+      setMatchedArticle(null);
+    }
+  }, [formData.barcode, formData.model, formData.brand, articles, editingArticle, isModalOpen]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentEnterpriseId) return;
 
-    if (!formData.name.trim()) {
-      setError('El nombre del artículo es obligatorio.');
-      return;
+    if (matchedArticle && !editingArticle) {
+      const confirmed = await showConfirm(
+        'Código de barras / Artículo ya registrado',
+        `El artículo con este código de barras o datos ya está registrado como "${matchedArticle.name}". ¿Desea sumar el nuevo ingreso a dicho producto? (Esto evitará duplicados)`,
+        { type: 'warning', confirmText: 'Sí, sumar stock', cancelText: 'No, cancelar' }
+      );
+      if (!confirmed) {
+        return;
+      }
     }
 
-    if (!formData.category.trim()) {
+if (!formData.category.trim()) {
       setError('La categoría es obligatoria.');
       return;
     }
@@ -135,50 +158,91 @@ export default function ArticlesTab() {
     setSubmitting(true);
     setError('');
 
+    
+    let seriesArray: string[] = [];
+    if (formData.requiresSeries) {
+      seriesArray = formData.seriesInput.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+      const targetQuantity = editingArticle ? editingArticle.quantity : Number(formData.initialQuantity || 0);
+      if (seriesArray.length !== targetQuantity && formData.initialQuantity > 0) {
+        setError(`Debe ingresar exactamente ${targetQuantity} series (una por artículo). Actual: ${seriesArray.length}`);
+        setSubmitting(false);
+        return;
+      }
+    }
+    const computedName = `${formData.category.trim()} ${formData.brand.trim()} ${formData.model.trim()}${formData.barcode.trim() ? ' ' + formData.barcode.trim() : ''}`.trim().replace(/\s+/g, ' ');
+
     try {
       if (editingArticle) {
         // Edit article attributes (excluding quantity here to preserve history/transfer accuracy)
         const artRef = doc(db, 'articles', editingArticle.id);
         await updateDoc(artRef, {
-          name: formData.name.trim(),
+          name: computedName,
           category: formData.category.trim(),
           brand: formData.brand.trim(),
           model: formData.model.trim(),
-          series: formData.series.trim(),
+          requiresSeries: formData.requiresSeries,
+          seriesList: seriesArray,
           barcode: formData.barcode.trim(),
           minStockAlert: Number(formData.minStockAlert)
         });
       } else {
-        // Create new article
+        // Create new article or update existing
         const batch = writeBatch(db);
-        const artRef = doc(collection(db, 'articles'));
-        
-        const newArticle = {
-          name: formData.name.trim(),
-          category: formData.category.trim(),
-          brand: formData.brand.trim(),
-          model: formData.model.trim(),
-          series: formData.series.trim(),
-          barcode: formData.barcode.trim(),
-          minStockAlert: Number(formData.minStockAlert),
-          quantity: Number(formData.initialQuantity || 0),
-          userId: currentEnterpriseId,
-          createdAt: Timestamp.now()
-        };
+        let artId = '';
+        let currentArtSeries: string[] = [];
 
-        batch.set(artRef, newArticle);
+        if (matchedArticle) {
+          artId = matchedArticle.id;
+          currentArtSeries = matchedArticle.seriesList || [];
+          
+          const artRef = doc(db, 'articles', artId);
+          batch.update(artRef, {
+            quantity: matchedArticle.quantity + Number(formData.initialQuantity || 0),
+            seriesList: [...currentArtSeries, ...seriesArray]
+          });
+        } else {
+          const artRef = doc(collection(db, 'articles'));
+          artId = artRef.id;
+          const newArticle = {
+            name: computedName,
+            category: formData.category.trim(),
+            brand: formData.brand.trim(),
+            model: formData.model.trim(),
+            requiresSeries: formData.requiresSeries,
+            seriesList: seriesArray,
+            barcode: formData.barcode.trim(),
+            minStockAlert: Number(formData.minStockAlert),
+            quantity: Number(formData.initialQuantity || 0),
+            userId: currentEnterpriseId,
+            createdAt: Timestamp.now()
+          };
+          batch.set(artRef, newArticle);
+        }
 
-        // Always create a warehouse_inventory record for the selected warehouse, even if quantity is 0
-        const invId = `${formData.initialWarehouseId}_${artRef.id}`;
+        const invId = `${formData.initialWarehouseId}_${artId}`;
         const invRef = doc(db, 'warehouse_inventory', invId);
         
-        batch.set(invRef, {
-          id: invId,
-          warehouseId: formData.initialWarehouseId,
-          articleId: artRef.id,
-          quantity: Number(formData.initialQuantity || 0),
-          userId: currentEnterpriseId
-        });
+        // We need to know if warehouse_inventory exists to update it, but we are doing it in a batch...
+        // Let's do it right before batch:
+        const { getDoc } = await import('firebase/firestore');
+        const invSnap = await getDoc(invRef);
+        
+        if (invSnap.exists()) {
+          const existingInv = invSnap.data();
+          batch.update(invRef, {
+            quantity: existingInv.quantity + Number(formData.initialQuantity || 0),
+            seriesList: [...(existingInv.seriesList || []), ...seriesArray]
+          });
+        } else {
+          batch.set(invRef, {
+            id: invId,
+            warehouseId: formData.initialWarehouseId,
+            articleId: artId,
+            quantity: Number(formData.initialQuantity || 0),
+            seriesList: seriesArray,
+            userId: currentEnterpriseId
+          });
+        }
 
         await batch.commit();
       }
@@ -225,7 +289,7 @@ export default function ArticlesTab() {
 
   const filteredArticles = articles.filter(art => 
     art.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (art.series && art.series.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    ((art.seriesList || []).some(s => s.toLowerCase().includes(searchTerm.toLowerCase()))) ||
     (art.category && art.category.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (art.brand && art.brand.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (art.model && art.model.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -243,7 +307,7 @@ export default function ArticlesTab() {
           className="flex items-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md active:scale-95"
         >
           <Plus className="w-4 h-4" />
-          <span>Nuevo Artículo</span>
+          <span>Ingreso de Mercadería</span>
         </button>
       </div>
 
@@ -403,7 +467,7 @@ export default function ArticlesTab() {
               <div className="flex items-center gap-2">
                 <Package className="w-5 h-5" />
                 <h3 className="text-lg font-black uppercase tracking-tight">
-                  {editingArticle ? 'Editar Artículo' : 'Nuevo Artículo'}
+                  {editingArticle ? 'Editar Artículo' : 'Ingreso de Mercadería'}
                 </h3>
               </div>
               <button 
@@ -423,16 +487,20 @@ export default function ArticlesTab() {
               )}
 
               <div className="space-y-4">
-                {/* Nombre del Artículo */}
+                {matchedArticle && !editingArticle && (
+                  <div className="p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl mb-4">
+                    <p className="text-xs font-bold text-green-700 dark:text-green-400">Artículo Existente detectado. Se ingresará stock adicional.</p>
+                  </div>
+                )}
+                {/* Nombre del Artículo Generado Automáticamente */}
                 <div>
-                  <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Nombre del Artículo *</label>
+                  <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Nombre del Artículo (Automático)</label>
                   <input
                     type="text"
-                    required
-                    placeholder="Ej. Cocina de Inducción, Parlante Bluetooth, Nevera"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all uppercase"
+                    readOnly
+                    placeholder="Categoría + Marca + Modelo + Código de Barras"
+                    value={`${formData.category.trim()} ${formData.brand.trim()} ${formData.model.trim()}${formData.barcode.trim() ? ' ' + formData.barcode.trim() : ''}`.trim().replace(/\s+/g, ' ')}
+                    className="w-full px-4 py-3 bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none text-neutral-500 dark:text-neutral-400 cursor-not-allowed uppercase font-bold"
                   />
                 </div>
 
@@ -512,14 +580,24 @@ export default function ArticlesTab() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Número de Serie */}
                   <div>
-                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Número de Serie (Opcional)</label>
-                    <input
-                      type="text"
-                      placeholder="Ej. SN-3948572"
-                      value={formData.series}
-                      onChange={(e) => setFormData({ ...formData, series: e.target.value })}
-                      className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all uppercase"
-                    />
+                    <label className="flex items-center gap-2 cursor-pointer mb-2 mt-4">
+                      <input
+                        type="checkbox"
+                        checked={formData.requiresSeries}
+                        onChange={(e) => setFormData({ ...formData, requiresSeries: e.target.checked })}
+                        className="w-4 h-4 text-indigo-600 rounded border-neutral-300 focus:ring-indigo-500"
+                      />
+                      <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Requerir Series / Seriales</span>
+                    </label>
+                    {formData.requiresSeries && (
+                      <textarea
+                        placeholder="Ingrese series separadas por coma o salto de línea"
+                        value={formData.seriesInput}
+                        onChange={(e) => setFormData({ ...formData, seriesInput: e.target.value })}
+                        rows={3}
+                        className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all uppercase font-mono"
+                      />
+                    )}
                   </div>
 
                   {/* Stock Mínimo Alerta */}

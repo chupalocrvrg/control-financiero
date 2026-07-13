@@ -34,9 +34,8 @@ const inIframe = window.self !== window.top;
             <ShieldCheck className="h-10 w-10 text-white" />
           </div>
         </div>
-        <h2 className="text-center text-4xl font-black text-neutral-900 dark:text-neutral-50 tracking-tighter uppercase italic">
-          Control Financiero
-        </h2>
+        <h2 className="text-center text-4xl font-black text-neutral-900 dark:text-neutral-50 tracking-tighter uppercase italic">Control 360°</h2>
+        <p className="text-center text-xs font-bold text-indigo-500 uppercase tracking-widest mt-1">by Trennd</p>
         <p className="mt-4 text-center text-sm font-bold text-neutral-400 uppercase tracking-[0.2em] max-w-xs mx-auto leading-relaxed">
           SISTEMA CENTRAL DE GESTIÓN DE EGRESOS Y PROYECCIONES
         </p>

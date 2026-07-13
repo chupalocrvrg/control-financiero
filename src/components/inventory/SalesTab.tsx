@@ -4,6 +4,7 @@ import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { Warehouse, Article, WarehouseInventory, InventorySale } from '../../types/inventory';
+import { ArticleSelector } from './ArticleSelector';
 import { executeInventorySale, revertInventorySale } from '../../lib/inventory-db';
 import { ShoppingCart, AlertTriangle, Plus, Trash2, Calendar, FileText, Check, User, Gift, Tag, X } from 'lucide-react';
 import { format } from 'date-fns';
@@ -20,9 +21,13 @@ interface Employee {
 
 interface SaleItemRow {
   articleId: string;
+  name?: string;
   warehouseId: string;
+  warehouseName?: string;
   quantity: number;
   isGift: boolean;
+  selectedSeries?: string[];
+  seriesList?: string[];
 }
 
 export default function SalesTab() {
@@ -179,6 +184,11 @@ export default function SalesTab() {
         setError('Las cantidades a vender deben ser mayores a 0.');
         return;
       }
+      const art = articles.find(a => a.id === item.articleId);
+      if (art?.requiresSeries && item.quantity !== (item.selectedSeries?.length || 0)) {
+        setError(`El artículo "${art.name}" requiere que seleccione ${item.quantity} series. Seleccionadas: ${item.selectedSeries?.length || 0}`);
+        return;
+      }
 
       const key = `${item.warehouseId}_${item.articleId}`;
       stockChecks[key] = (stockChecks[key] || 0) + item.quantity;
@@ -203,7 +213,10 @@ export default function SalesTab() {
         clientName.trim(),
         sellerId,
         sellerName,
-        saleItems
+        saleItems.map(item => ({
+          ...item,
+          seriesList: item.selectedSeries
+        }))
       );
 
       setSuccess('¡Venta de inventario registrada con éxito!');
@@ -360,36 +373,42 @@ export default function SalesTab() {
                   const available = getAvailableStock(item.articleId, item.warehouseId);
                   return (
                     <div key={index} className="bg-neutral-50 dark:bg-neutral-800/30 p-3 rounded-2xl border border-neutral-100 dark:border-neutral-800/50 space-y-3">
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-3">
                         <div>
-                          <label className="text-[9px] font-black text-neutral-400 uppercase tracking-wider">Artículo</label>
-                          <select
-                            value={item.articleId}
-                            onChange={(e) => handleItemChange(index, 'articleId', e.target.value)}
-                            className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs outline-none focus:border-indigo-500 text-neutral-900 dark:text-neutral-50"
-                          >
-                            <option value="">-- Seleccionar --</option>
-                            {articles.map(art => (
-                              <option key={art.id} value={art.id}>{art.name}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="text-[9px] font-black text-neutral-400 uppercase tracking-wider">Desde Bodega</label>
+                          <label className="text-[9px] font-black text-neutral-400 uppercase tracking-wider block mb-1">Desde Bodega</label>
                           <select
                             value={item.warehouseId}
                             onChange={(e) => handleItemChange(index, 'warehouseId', e.target.value)}
-                            className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs outline-none focus:border-indigo-500 text-neutral-900 dark:text-neutral-50"
+                            className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs outline-none focus:border-indigo-500 text-neutral-900 dark:text-neutral-50 uppercase"
                           >
                             {warehouses.map(wh => (
                               <option key={wh.id} value={wh.id}>{wh.name}</option>
                             ))}
                           </select>
                         </div>
+                        <div>
+                           <label className="text-[9px] font-black text-neutral-400 uppercase tracking-wider block mb-1">Artículo a vender</label>
+                           {item.warehouseId ? (
+                             <ArticleSelector
+                                articles={articles}
+                                inventories={inventories}
+                                warehouseId={item.warehouseId}
+                                articleId={item.articleId}
+                                quantity={item.quantity}
+                                selectedSeries={item.selectedSeries || []}
+                                onChangeArticle={(id) => handleItemChange(index, 'articleId', id)}
+                                onChangeQuantity={(q) => handleItemChange(index, 'quantity', q)}
+                                onChangeSeries={(s) => handleItemChange(index, 'selectedSeries', s)}
+                             />
+                           ) : (
+                             <div className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 text-center text-xs text-neutral-500 uppercase tracking-wider font-bold">
+                               Seleccione una bodega primero
+                             </div>
+                           )}
+                        </div>
                       </div>
 
-                      <div className="flex items-center justify-between gap-4 pt-1">
+                      <div className="flex items-center justify-between gap-4 pt-3 mt-3 border-t border-neutral-100 dark:border-neutral-800">
                         <div className="flex items-center gap-3">
                           <button
                             type="button"
@@ -404,33 +423,16 @@ export default function SalesTab() {
                             <Gift className="w-3.5 h-3.5" />
                             {item.isGift ? 'Regalo' : 'Venta Estándar'}
                           </button>
-
-                          {item.articleId && (
-                            <span className="text-[9px] font-bold uppercase text-neutral-400">
-                              Disponibles: <strong className="text-neutral-600 dark:text-neutral-300">{available} uds</strong>
-                            </span>
-                          )}
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <div className="w-16">
-                            <input
-                              type="number"
-                              min={1}
-                              max={available || 1}
-                              value={item.quantity}
-                              onChange={(e) => handleItemChange(index, 'quantity', Math.max(1, parseInt(e.target.value) || 0))}
-                              className="w-full px-2 py-1 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs text-center outline-none focus:border-indigo-500 text-neutral-900 dark:text-neutral-50"
-                            />
-                          </div>
-
                           <button
                             type="button"
                             onClick={() => handleRemoveItemRow(index)}
                             disabled={saleItems.length === 1}
-                            className="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-all disabled:opacity-30"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-all disabled:opacity-30"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" /> Quitar
                           </button>
                         </div>
                       </div>

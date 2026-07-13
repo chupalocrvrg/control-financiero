@@ -73,7 +73,7 @@ export default function PWAPrompt() {
             <Smartphone className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h3 className="font-black text-neutral-900 dark:text-neutral-50 text-sm uppercase tracking-tight">Instalar Control Financiero</h3>
+            <h3 className="font-black text-neutral-900 dark:text-neutral-50 text-sm uppercase tracking-tight">Instalar Control 360°</h3>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">
               Accede más rápido, recibe notificaciones y usa la app sin distracciones desde tu pantalla de inicio.
             </p>

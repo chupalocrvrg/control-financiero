@@ -4,6 +4,7 @@ import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { Warehouse, Article, WarehouseInventory, LoanReturn } from '../../types/inventory';
+import { ArticleSelector } from './ArticleSelector';
 import { executeLoanReturn, revertLoanReturn } from '../../lib/inventory-db';
 import { ShoppingBag, AlertTriangle, Plus, Trash2, Calendar, FileText, Check, Search, User, ArrowUpRight, ArrowDownLeft, X } from 'lucide-react';
 import { format } from 'date-fns';
@@ -11,7 +12,9 @@ import { cn } from '../../lib/utils';
 
 interface LoanReturnItemRow {
   articleId: string;
+  name?: string;
   quantity: number;
+  seriesList?: string[];
 }
 
 export default function LoansReturnsTab() {
@@ -449,37 +452,18 @@ export default function LoansReturnsTab() {
                 const available = getWarehouseStock(item.articleId, warehouseId);
                 return (
                   <div key={index} className="flex gap-2 items-start bg-neutral-50 dark:bg-neutral-800/30 p-3 rounded-2xl border border-neutral-100 dark:border-neutral-800/50">
-                    <div className="flex-1 space-y-1">
-                      <select
-                        value={item.articleId}
-                        onChange={(e) => handleItemChange(index, 'articleId', e.target.value)}
-                        className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs outline-none focus:border-indigo-500 text-neutral-900 dark:text-neutral-50"
-                      >
-                        <option value="">-- Seleccionar Artículo --</option>
-                        {articles.map(art => {
-                          const stock = getWarehouseStock(art.id, warehouseId);
-                          return (
-                            <option key={art.id} value={art.id} disabled={type === 'RETURN' && stock <= 0}>
-                              {art.name} {art.series ? `(S/N: ${art.series})` : ''} {type === 'RETURN' ? `- (Dis: ${stock})` : ''}
-                            </option>
-                          );
-                        })}
-                      </select>
-                      {type === 'RETURN' && item.articleId && (
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400 block px-1">
-                          Disponible en bodega: <strong className="text-neutral-600 dark:text-neutral-300">{available} uds</strong>
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="w-20">
-                      <input
-                        type="number"
-                        min={1}
-                        max={type === 'RETURN' ? available : undefined}
-                        value={item.quantity}
-                        onChange={(e) => handleItemChange(index, 'quantity', Math.max(1, parseInt(e.target.value) || 0))}
-                        className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs text-center outline-none focus:border-indigo-500 text-neutral-900 dark:text-neutral-50"
+                    <div className="flex-1">
+                      <ArticleSelector 
+                        articles={articles}
+                        inventories={inventories}
+                        warehouseId={warehouseId}
+                        articleId={item.articleId}
+                        quantity={item.quantity}
+                        selectedSeries={item.seriesList || []}
+                        onChangeArticle={(id) => handleItemChange(index, 'articleId', id)}
+                        onChangeQuantity={(qty) => handleItemChange(index, 'quantity', qty)}
+                        onChangeSeries={(series) => handleItemChange(index, 'seriesList', series)}
+                        isReceiving={type === 'LOAN'}
                       />
                     </div>
 
