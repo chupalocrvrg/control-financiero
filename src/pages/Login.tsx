@@ -40,8 +40,8 @@ const inIframe = window.self !== window.top;
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 selection:bg-indigo-500 selection:text-white transition-colors duration-500">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center mb-8">
-          <div className="p-5 bg-indigo-600 rounded-[2.5rem] shadow-2xl shadow-indigo-200 dark:shadow-none animate-in zoom-in-50 duration-700">
-            <ShieldCheck className="h-10 w-10 text-white" />
+          <div className="p-4 bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-[2.5rem] shadow-xl animate-in zoom-in-50 duration-700">
+            <img src="/logo.svg" alt="Control 360° Logo" className="h-16 w-16" referrerPolicy="no-referrer" />
           </div>
         </div>
         <h2 className="text-center text-4xl font-black text-neutral-900 dark:text-neutral-50 tracking-tighter uppercase italic">Control 360°</h2>

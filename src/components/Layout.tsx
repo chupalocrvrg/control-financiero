@@ -311,8 +311,8 @@ export default function Layout() {
         onClick={handleSidebarClick}
       >
         <div className={cn("flex items-center px-4 border-neutral-200 dark:border-neutral-800/50", isHorizontal ? "h-16 border-r flex-shrink-0" : "h-20 border-b")}>
-          <div className="h-10 w-10 min-w-[40px] bg-indigo-600 dark:bg-indigo-500 rounded-xl flex items-center justify-center mr-3 shadow-lg shadow-indigo-200 dark:shadow-none mx-auto md:mx-0">
-            <CheckCircle className="h-6 w-6 text-white" />
+          <div className="h-10 w-10 min-w-[40px] bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-xl flex items-center justify-center mr-3 shadow-md mx-auto md:mx-0">
+            <img src="/logo.svg" alt="Control 360°" className="h-7 w-7" referrerPolicy="no-referrer" />
           </div>
           {!isSidebarCollapsed && (
             <div className="flex flex-col truncate animate-in fade-in duration-300">

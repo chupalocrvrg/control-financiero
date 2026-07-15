@@ -11,6 +11,23 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.6.7",
+    date: new Date().toISOString(),
+    changes: [
+      "Optimización de PWA: Generación y despliegue de iconos PWA específicos ('maskable') de alta resolución (192x192 y 512x512) centrados en zona segura (65% del área con fondo blanco) para una visualización premium en launchers de Android e iOS.",
+      "Ajuste del Manifiesto: Actualización en `vite.config.ts` vinculando los recursos específicos `/maskable-192x192.png` y `/maskable-512x512.png` con propósito 'maskable', garantizando compatibilidad y eliminando recortes indeseados."
+    ],
+  },
+  {
+    version: "4.6.6",
+    date: new Date().toISOString(),
+    changes: [
+      "Identidad Visual: Integración del nuevo logotipo oficial corporativo en formato vectorial SVG (`logo.svg`) para una definición impecable y carga ultra-rápida.",
+      "Integración de PWA: Generación y despliegue de los recursos estáticos del manifest (iconos PWA en 192x192, 512x512, maskable e icono Apple Touch) utilizando renderizado de alta fidelidad con Sharp.",
+      "Consistencia de Interfaz: Actualización visual del acceso en la pantalla de inicio de sesión (`Login.tsx`) y del encabezado de la barra lateral (`Layout.tsx`) integrando el nuevo logotipo en marcos optimizados."
+    ],
+  },
+  {
     version: "4.6.5",
     date: new Date().toISOString(),
     changes: [

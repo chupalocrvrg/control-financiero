@@ -18,24 +18,32 @@ export default defineConfig(({mode}) => {
           short_name: 'HQ Payments',
           description: 'Gestión inteligente de cheques y egresos financieros',
           theme_color: '#000000',
-          background_color: '#000000',
+          background_color: '#ffffff',
           display: 'standalone',
           icons: [
             {
-              src: 'pwa-192x192.png',
+              src: '/pwa-192x192.png',
               sizes: '192x192',
-              type: 'image/png'
+              type: 'image/png',
+              purpose: 'any'
             },
             {
-              src: 'pwa-512x512.png',
-              sizes: '512x512',
-              type: 'image/png'
-            },
-            {
-              src: 'pwa-512x512.png',
+              src: '/pwa-512x512.png',
               sizes: '512x512',
               type: 'image/png',
-              purpose: 'any maskable'
+              purpose: 'any'
+            },
+            {
+              src: '/maskable-192x192.png',
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'maskable'
+            },
+            {
+              src: '/maskable-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
             }
           ]
         }
