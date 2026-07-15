@@ -1,2 +1,0 @@
-sed -i 's/"min-h-screen flex flex-col md:flex-row transition-colors duration-300"/"h-screen overflow-hidden flex flex-col md:flex-row transition-colors duration-300"/g' /app/applet/src/components/Layout.tsx
-sed -i 's/<div className="flex-1 flex flex-col min-h-screen overflow-x-hidden pb-20 md:pb-0 relative z-10">/<div className="flex-1 flex flex-col h-screen overflow-y-auto overflow-x-hidden pb-20 md:pb-0 relative z-10">/g' /app/applet/src/components/Layout.tsx

@@ -11,6 +11,15 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.6.5",
+    date: new Date().toISOString(),
+    changes: [
+      "Auditoría de Seguridad: Eliminación completa de correos electrónicos hardcodeados en las reglas de seguridad de Firestore, reemplazados por claims de autenticación y mapeo dinámico de roles.",
+      "Reforzamiento de Reglas de Acceso: Restricción y validación estricta en colecciones empresariales (empleados, presupuestos, ventas, cobros, etc.) mediante el validador `isEnterpriseData` para evitar fugas de datos entre organizaciones.",
+      "Limpieza de Workspace: Remoción total de scripts temporales y de diagnóstico obsoletos (`fix_*`, `patch_*`) del directorio raíz para asegurar un código base limpio y profesional."
+    ],
+  },
+  {
     version: "4.6.4",
     date: new Date().toISOString(),
     changes: [

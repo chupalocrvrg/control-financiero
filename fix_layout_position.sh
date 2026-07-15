@@ -1,1 +1,0 @@
-sed -i 's/"h-screen overflow-hidden flex flex-col md:flex-row transition-colors duration-300"/"h-screen overflow-hidden flex flex-col transition-colors duration-300", settings.menuPosition === '\''right'\'' ? "md:flex-row-reverse" : "md:flex-row"/g' /app/applet/src/components/Layout.tsx

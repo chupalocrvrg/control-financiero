@@ -1,1 +1,0 @@
-sed -i 's/uiStyle?: UIStyle;/uiStyle?: UIStyle;\n  accentColor?: string;\n  fontFamily?: string;\n  menuPosition?: '\''left'\'' | '\''right'\'' | '\''top'\'' | '\''bottom'\'';/g' /app/applet/src/contexts/SettingsContext.tsx

@@ -1,1 +1,0 @@
-sed -i 's/menuPosition?: '\'left\'' | '\'right\'' | '\'top\'' | '\'bottom\'';/menuPosition?: '\''left'\'' | '\''right'\'' | '\''top'\'' | '\''bottom'\'';\n  liquidBackgroundType?: '\''gradient'\'' | '\''animated'\'' | '\''custom'\'';\n  liquidBackgroundValue?: string;/g' /app/applet/src/contexts/SettingsContext.tsx

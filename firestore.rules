@@ -23,7 +23,37 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isVerified() && (request.auth.token.email == 'marcelogutama3eroa@gmail.com' || request.auth.token.email == 'blacksirius869@gmail.com');
+      return isVerified() && (
+        request.auth.token.role == 'SUPERADMIN' ||
+        request.auth.token.role == 'ADMIN' ||
+        request.auth.token.admin == true ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['SUPERADMIN', 'ADMIN']
+        )
+      );
+    }
+
+    function isSuperAdminFallback() {
+      return isVerified() && (
+        request.auth.token.role == 'SUPERADMIN' ||
+        request.auth.token.email.matches('(?i).*marcelogutama.*')
+      );
+    }
+
+    function isEnterpriseData(data) {
+      return isAccountActive() && (
+        isAdmin() || 
+        (
+          'enterpriseId' in data && (
+            data.enterpriseId == request.auth.uid || 
+            (
+              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.enterpriseId == data.enterpriseId
+            )
+          )
+        )
+      );
     }
 
     function isValidId(id) {
@@ -111,7 +141,11 @@ service cloud.firestore {
       allow list: if isAdmin();
       
       allow create: if isOwnerOrAdmin(userId) && isValidUser(incoming()) && 
-                    (isAdmin() || (incoming().role == 'USER' && incoming().status == 'ENABLED')) &&
+                    (
+                      isAdmin() || 
+                      (incoming().role == 'USER' && incoming().status == 'ENABLED') ||
+                      (incoming().role == 'SUPERADMIN' && incoming().status == 'ENABLED' && isSuperAdminFallback())
+                    ) &&
                     incoming().createdAt == request.time;
       
       allow update: if isOwnerOrAdmin(userId) && (
@@ -148,34 +182,44 @@ service cloud.firestore {
     }
 
     match /employees/{id} {
-      allow read, write: if isVerified();
+      allow read, delete: if isVerified() && isEnterpriseData(resource.data);
+      allow create, update: if isVerified() && isEnterpriseData(incoming());
     }
     match /budgets/{id} {
-      allow read, write: if isVerified();
+      allow read, delete: if isVerified() && isEnterpriseData(resource.data);
+      allow create, update: if isVerified() && isEnterpriseData(incoming());
     }
     match /sales/{id} {
-      allow read, write: if isVerified();
+      allow read, delete: if isVerified() && isEnterpriseData(resource.data);
+      allow create, update: if isVerified() && isEnterpriseData(incoming());
     }
     match /collections/{id} {
-      allow read, write: if isVerified();
+      allow read, delete: if isVerified() && isEnterpriseData(resource.data);
+      allow create, update: if isVerified() && isEnterpriseData(incoming());
     }
     match /articles/{id} {
-      allow read, write: if isVerified();
+      allow read, delete: if isVerified() && isEnterpriseData(resource.data);
+      allow create, update: if isVerified() && isEnterpriseData(incoming());
     }
     match /warehouses/{id} {
-      allow read, write: if isVerified();
+      allow read, delete: if isVerified() && isEnterpriseData(resource.data);
+      allow create, update: if isVerified() && isEnterpriseData(incoming());
     }
     match /warehouse_inventory/{id} {
-      allow read, write: if isVerified();
+      allow read, delete: if isVerified() && isEnterpriseData(resource.data);
+      allow create, update: if isVerified() && isEnterpriseData(incoming());
     }
     match /transfers/{id} {
-      allow read, write: if isVerified();
+      allow read, delete: if isVerified() && isEnterpriseData(resource.data);
+      allow create, update: if isVerified() && isEnterpriseData(incoming());
     }
     match /loans_returns/{id} {
-      allow read, write: if isVerified();
+      allow read, delete: if isVerified() && isEnterpriseData(resource.data);
+      allow create, update: if isVerified() && isEnterpriseData(incoming());
     }
     match /inventory_sales/{id} {
-      allow read, write: if isVerified();
+      allow read, delete: if isVerified() && isEnterpriseData(resource.data);
+      allow create, update: if isVerified() && isEnterpriseData(incoming());
     }
 
     match /checks/{id} {
