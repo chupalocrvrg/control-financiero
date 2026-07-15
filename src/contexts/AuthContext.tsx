@@ -9,11 +9,12 @@ import { hashPin } from '../lib/utils';
 import { isSuperAdminEmail } from '../lib/utils';
 
 export interface UserProfile {
+  uid?: string;
   name: string;
   ruc?: string;
   phone?: string;
   email: string;
-  role: 'ADMIN' | 'USER' | 'BODEGUERO' | 'enterprise' | 'employee';
+  role: 'SUPERADMIN' | 'ADMIN' | 'USER' | 'BODEGUERO' | 'enterprise' | 'employee';
   status: 'ENABLED' | 'DISABLED';
   subscriptionEnd: string;
   pin: string;
@@ -22,6 +23,7 @@ export interface UserProfile {
   createdAt: string;
   enterpriseId?: string;
   photoUrl?: string;
+  hasCompletedOnboarding?: boolean;
 }
 
 interface AuthContextType {
@@ -112,21 +114,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           } else {
             console.log("Profile not found locally, creating client-side fallback...");
-            const defaultProfile: UserProfile = {
+            const defaultProfile = {
               uid: firebaseUser.uid,
               email: firebaseUser.email || '',
               name: firebaseUser.displayName || 'Usuario Nuevo',
-              role: 'USER',
-              status: 'ENABLED',
-              hasCompletedOnboarding: false,
+              role: (isSuperAdminEmail(firebaseUser.email) ? 'SUPERADMIN' : 'USER') as any,
+              status: 'ENABLED' as any,
+              hasCompletedOnboarding: isSuperAdminEmail(firebaseUser.email),
               subscriptionEnd: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
-              createdAt: new Date().toISOString()
+              createdAt: serverTimestamp(),
+              pin: "",
+              pinInactivityLimit: 60,
+              lastPinEntry: serverTimestamp()
             };
             try {
-              const { setDoc } = await import('firebase/firestore');
               await setDoc(docRef, defaultProfile);
-              setActualProfile(defaultProfile);
-              setProfile(defaultProfile);
+              setActualProfile(defaultProfile as unknown as UserProfile);
+              setProfile(defaultProfile as unknown as UserProfile);
             } catch (err) {
               console.error("Could not create fallback profile", err);
               setActualProfile(null);
@@ -250,7 +254,8 @@ useEffect(() => {
           ruc: dataToSave.ruc || '',
           phone: dataToSave.phone || '',
           email: activeEmail,
-          role: isAdminEmail ? 'ADMIN' : 'USER',
+          role: isAdminEmail ? 'SUPERADMIN' : 'USER',
+          hasCompletedOnboarding: isAdminEmail ? true : undefined,
           status: 'ENABLED',
           subscriptionEnd: addDays(new Date(), 90).toISOString(),
           pin: dataToSave.pin || '',
@@ -326,7 +331,7 @@ useEffect(() => {
   } as unknown as FirebaseUser) : actualUser;
 
   const isSuperAdminOriginal = isSuperAdminEmail(actualUser?.email);
-  const isAdmin = profile?.role === 'ADMIN' || isSuperAdminEmail(effectiveUser?.email);
+  const isAdmin = profile?.role === 'ADMIN' || profile?.role === 'SUPERADMIN' || isSuperAdminEmail(effectiveUser?.email);
   const isExpired = profile 
     ? (!isAdmin && !isSuperAdminOriginal && (isAfter(new Date(), parseISO(profile.subscriptionEnd)) || profile.status === 'DISABLED')) 
     : (!!effectiveUser);

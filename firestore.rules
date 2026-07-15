@@ -63,7 +63,7 @@ service cloud.firestore {
              data.email is string &&
              data.pin is string && (data.pin.matches('^\\d{6}$') || data.pin.matches('^[a-fA-F0-9]{64}$')) &&
              data.status in ['ENABLED', 'DISABLED'] &&
-             data.role in ['ADMIN', 'USER', 'BODEGUERO', 'enterprise', 'employee'] &&
+             data.role in ['SUPERADMIN', 'ADMIN', 'USER', 'BODEGUERO', 'enterprise', 'employee'] &&
              (!('ruc' in data) || data.ruc == null || (data.ruc is string && data.ruc.size() <= 50)) &&
              (!('phone' in data) || data.phone == null || (data.phone is string && data.phone.size() <= 50)) &&
              data.createdAt is timestamp;

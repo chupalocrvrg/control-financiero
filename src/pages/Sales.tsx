@@ -35,7 +35,7 @@ export default function Sales() {
   const { user, profile, originalUser } = useAuth();
   const { showToast, showConfirm } = useNotification();
 
-  const isSuperAdmin = profile?.role === 'ADMIN' || isSuperAdminEmail(originalUser?.email);
+  const isSuperAdmin = profile?.role === 'ADMIN' || profile?.role === 'SUPERADMIN' || isSuperAdminEmail(originalUser?.email);
 
   const [enterprises, setEnterprises] = useState<{ id: string; name: string; email?: string }[]>([]);
   const [selectedEnterpriseId, setSelectedEnterpriseId] = useState<string>(''); // list filter

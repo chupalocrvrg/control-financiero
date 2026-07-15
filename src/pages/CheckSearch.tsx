@@ -44,7 +44,7 @@ export default function CheckSearch() {
   const [selectedEnterpriseId, setSelectedEnterpriseId] = useState<string>('');
   const [enterprises, setEnterprises] = useState<{ id: string; name: string; email?: string }[]>([]);
 
-  const isSuperAdmin = profile?.role === 'ADMIN' || isSuperAdminEmail(originalUser?.email);
+  const isSuperAdmin = profile?.role === 'ADMIN' || profile?.role === 'SUPERADMIN' || isSuperAdminEmail(originalUser?.email);
 
   const defaultEnterpriseId = profile?.role === 'enterprise'
     ? user?.uid

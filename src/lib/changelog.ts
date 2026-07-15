@@ -11,6 +11,24 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.6.4",
+    date: new Date().toISOString(),
+    changes: [
+      "Solución al problema de 'Missing or insufficient permissions' para perfiles de Super Administrador en las reglas de seguridad de Firestore.",
+      "Optimización de la creación de perfiles utilizando `serverTimestamp()` para cumplir estrictamente con los esquemas de validación de Firestore.",
+      "Ajuste en la lógica de CheckSearch, CheckEntry y Sales para asegurar la visualización y permisos correctos con el rol 'SUPERADMIN'."
+    ],
+  },
+  {
+    version: "4.6.3",
+    date: new Date().toISOString(),
+    changes: [
+      "Solución al problema de detección del rol de Super Administrador en producción.",
+      "Asignación robusta y automática del rol 'SUPERADMIN' y omisión del flujo de onboarding para el correo principal.",
+      "Soporte para administrar cuentas con el rol de SUPERADMIN desde la consola de administración de usuarios."
+    ],
+  },
+  {
     version: "4.6.2",
     date: new Date().toISOString(),
     changes: [

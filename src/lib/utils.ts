@@ -59,6 +59,7 @@ export async function hashPin(pin: string): Promise<string> {
 }
 
 export const SUPER_ADMIN_EMAILS = [
+  'marcelogutama3eroa@gmail.com',
   import.meta.env.VITE_SUPER_ADMIN_EMAIL,
   ...(import.meta.env.VITE_SUPER_ADMIN_EMAILS || '').split(',').map(e => e.trim())
 ].filter(Boolean) as string[];

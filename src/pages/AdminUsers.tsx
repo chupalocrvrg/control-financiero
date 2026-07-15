@@ -1724,6 +1724,7 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
                       <option value="enterprise">Empresa Principal / Matriz (enterprise)</option>
                       <option value="employee">Empleado Corporativo (employee)</option>
                       <option value="BODEGUERO">Bodeguero de Inventario (BODEGUERO)</option>
+                      <option value="SUPERADMIN">Super Administrador Principal (SUPERADMIN)</option>
                       <option value="ADMIN">Super Administrador (ADMIN)</option>
                       <option value="USER">Legacy (USER)</option>
                     </select>
