@@ -8,7 +8,86 @@ export interface ChangelogRelease {
   createdAt?: string;
 }
 
+
 export const staticChangelog: ChangelogRelease[] = [
+  {
+    version: "4.6.2",
+    date: new Date().toISOString(),
+    changes: [
+      "Corrección de bug crítico de redirecciones infinitas durante el inicio de sesión",
+      "Mejora en la creación de perfiles locales como respaldo"
+    ],
+  },
+  {
+    version: "4.6.1",
+    date: new Date().toISOString(),
+    changes: [
+      "Corrección de layout cuando el menú está arriba o abajo (evita que el contenido principal desaparezca)",
+      "Mejora del contraste y fondo de Liquid Glass para que los cambios sean notorios"
+    ],
+  },
+  {
+    version: "4.6.0",
+    date: new Date().toISOString(),
+    changes: [
+      "Temporizador de confirmación de 15 segundos al cambiar la ubicación del panel lateral",
+      "Nuevo estilo de interfaz Liquid Glass con fondos dinámicos",
+      "Soporte para fondos personalizados, gradientes y animados en Liquid Glass",
+      "Corrección de legibilidad del texto en el modo oscuro + glassmorfismo"
+    ],
+  },
+  {
+    version: "4.5.0",
+    date: new Date().toISOString(),
+    changes: [
+      "Reestructuración completa del panel de Configuración con navegación por pestañas",
+      "Añadida función de Respaldo y Migración de datos (JSON y Excel) con autenticación requerida",
+      "Nuevas opciones de personalización visual: Paleta Cromática, Tipografías y Ubicación de Menú Dinámica",
+      "Corrección de fijación del menú lateral para prevenir desplazamiento indeseado",
+      "Optimización visual del modo Glassmorphism en temas oscuros",
+      "Simplificación de la tabla de Administración de Usuarios (eliminación de iconos redundantes)",
+    ],
+  },
+  {
+    version: '4.4.1',
+    date: new Date().toISOString(),
+    changes: [
+      'Corrección de bugs críticos: Reglas de permisos para lectura unificada en base de datos de facturas y beneficiarios.',
+      'Corrección de orden de ejecución de hooks (useEffect) en Layout de la aplicación para evitar desbordamientos de renderizado.',
+    ]
+  },
+  {
+    version: '4.4.0',
+    date: new Date().toISOString(),
+    changes: [
+      'Efecto Glassmorphism Avanzado implementado con gradientes CSS inspirados en diseño 3D y elementos flotantes.',
+      'Separación de funcionalidades de Admin (Usuarios, Asignación, Versiones, Auditoría, Papelera) en rutas y vistas independientes en el menú.',
+    ]
+  },
+  {
+    version: '4.3.0',
+    date: new Date().toISOString(),
+    changes: [
+      'Estilo visual "Glassmorfismo" con opciones de personalización (Sólido/Glass).',
+      'Nueva barra lateral colapsable para maximizar el espacio de trabajo.',
+      'Módulo de Inventario migrado a estructura de submódulos laterales.',
+      'Panel de Administración reestructurado en submódulos para mejor organización.',
+      'Nuevo submódulo de Notificaciones de Error en el Panel de Administración.',
+      'Soporte robusto para manejo de estados de red (Cargando, Error, Vacío) en módulos.',
+      'Corrección de flujo de Onboarding que impedía acceso a usuarios nuevos (loop infinito).',
+      'Secciones inexistentes ahora muestran una página 404 detallada y un acceso rápido al Dashboard.',
+      'Actualización en el icono de Inventario para distinguirlo del módulo de Comercio.'
+    ]
+  },
+
+  {
+    version: '4.2.4',
+    date: new Date().toISOString().split('T')[0],
+    changes: [
+      'Seguridad: Se han movido los correos electrónicos de los administradores super usuarios del código fuente a variables de entorno (VITE_SUPER_ADMIN_EMAILS) para mayor protección y confidencialidad.'
+    ]
+  },
+
   {
     version: '4.2.3',
     date: new Date().toISOString().split('T')[0],

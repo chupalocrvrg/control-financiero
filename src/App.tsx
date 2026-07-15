@@ -50,9 +50,9 @@ export default function App() {
                     <Route path="/collections" element={<SecurityGuard><Collections /></SecurityGuard>} />
                     <Route path="/employees" element={<SecurityGuard><Employees /></SecurityGuard>} />
                     <Route path="/budgets" element={<SecurityGuard><Budgets /></SecurityGuard>} />
-                    <Route path="/inventory" element={<SecurityGuard><Inventory /></SecurityGuard>} />
+                    <Route path="/inventory/*" element={<SecurityGuard><Inventory /></SecurityGuard>} />
                     <Route path="/settings" element={<SecurityGuard><Settings /></SecurityGuard>} />
-                    <Route path="/admin" element={<SecurityGuard><AdminPanel /></SecurityGuard>} />
+                    <Route path="/admin/*" element={<SecurityGuard><AdminPanel /></SecurityGuard>} />
                     <Route path="*" element={<SecurityGuard><NotFound /></SecurityGuard>} />
                   </Route>
                 </Routes>

@@ -1,7 +1,7 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "4.2.3",
+  "version": "4.6.2",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -20,6 +20,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "file-saver": "^2.0.5",
     "firebase": "^12.11.0",
     "firebase-admin": "^13.10.0",
     "jspdf": "^4.2.1",

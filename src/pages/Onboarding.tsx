@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNotification } from "../contexts/NotificationContext";
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Building2, ShieldCheck, UserPlus, Fingerprint, X, ScrollText } from 'lucide-react';
@@ -6,6 +7,7 @@ import { Building2, ShieldCheck, UserPlus, Fingerprint, X, ScrollText } from 'lu
 export default function Onboarding() {
   const { updateProfile } = useAuth();
   const navigate = useNavigate();
+  const { showToast } = useNotification();
   const [loading, setLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
@@ -20,10 +22,11 @@ export default function Onboarding() {
     e.preventDefault();
     setLoading(true);
     try {
-      await updateProfile(formData);
+      await updateProfile({ ...formData, hasCompletedOnboarding: true });
       navigate('/');
     } catch (error) {
-      console.error('Error updating profile:', error);
+      console.error("Error updating profile:", error);
+      showToast("Error al configurar tu cuenta. Intenta de nuevo.", "error");
     } finally {
       setLoading(false);
     }

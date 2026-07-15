@@ -128,8 +128,8 @@ service cloud.firestore {
     }
 
     match /beneficiaries/{id} {
-      allow get: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow list: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if isVerified();
+      
       
       allow create: if isAccountActive() && isValidBeneficiary(incoming()) && isValidId(id) &&
                     incoming().createdAt == request.time;
@@ -138,8 +138,8 @@ service cloud.firestore {
     }
 
     match /invoices/{id} {
-      allow get: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow list: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if isVerified();
+      
       
       allow create: if isAccountActive() && isValidInvoice(incoming()) && isValidId(id) &&
                     incoming().createdAt == request.time;

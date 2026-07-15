@@ -5,6 +5,7 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 
 type Theme = 'light' | 'dark' | 'system';
 type Currency = 'USD' | 'EUR' | 'ARS' | 'CLP' | 'BRL';
+export type UIStyle = 'classic' | 'glass' | 'liquid-glass';
 
 interface Settings {
   theme: Theme;
@@ -12,6 +13,12 @@ interface Settings {
   language: string;
   iva: number;
   banks?: string[];
+  uiStyle?: UIStyle;
+  accentColor?: string;
+  fontFamily?: string;
+  menuPosition?: 'left' | 'right' | 'top' | 'bottom';
+  liquidBackgroundType?: 'gradient' | 'animated' | 'custom';
+  liquidBackgroundValue?: string;
 }
 
 interface SettingsContextType {
@@ -37,6 +44,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       currency: 'USD',
       language: 'es',
       iva: 15,
+      uiStyle: "classic",
     };
   });
   const [loading, setLoading] = useState(true);
@@ -77,6 +85,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             currency: 'USD',
             language: 'es',
             iva: 15,
+      uiStyle: "classic",
           }).catch(err => {
             handleFirestoreError(err, OperationType.WRITE, `settings/${targetId}`);
           });
@@ -122,6 +131,25 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       console.log('Root classes after update:', root.className);
     };
 
+    // Apply Accent Color
+    const shades = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+    if (settings.accentColor && settings.accentColor !== "indigo") {
+      shades.forEach(shade => {
+        root.style.setProperty(`--color-indigo-${shade}`, `var(--color-${settings.accentColor}-${shade})`);
+      });
+    } else {
+      shades.forEach(shade => {
+        root.style.removeProperty(`--color-indigo-${shade}`);
+      });
+    }
+
+    // Apply Font Family
+    if (settings.fontFamily) {
+      root.style.setProperty("--font-sans", settings.fontFamily);
+    } else {
+      root.style.removeProperty("--font-sans");
+    }
+
     applyTheme(settings.theme);
 
     if (settings.theme === 'system') {
@@ -130,7 +158,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       mediaQuery.addEventListener('change', listener);
       return () => mediaQuery.removeEventListener('change', listener);
     }
-  }, [settings.theme]);
+  }, [settings.theme, settings.accentColor, settings.fontFamily]);
 
   const updateSettings = async (newSettings: Partial<Settings>) => {
     const updated = { ...settings, ...newSettings };

@@ -1,0 +1,2 @@
+sed -i 's/"version": "4.6.0"/"version": "4.6.1"/g' /app/applet/package.json
+sed -i '/export const staticChangelog: ChangelogRelease\[\] = \[/a\  {\n    version: "4.6.1",\n    date: new Date().toISOString(),\n    changes: [\n      "Corrección de layout cuando el menú está arriba o abajo (evita que el contenido principal desaparezca)",\n      "Mejora del contraste y fondo de Liquid Glass para que los cambios sean notorios"\n    ],\n  },' /app/applet/src/lib/changelog.ts

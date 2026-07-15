@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import os
+
+code = """import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { db } from '../firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { storage } from '../firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
-import { Save, Plus, Trash2, Shield, Globe, Palette, Monitor, Calculator, Sun, Moon, PaintBucket, Building, User, Database, Download, Upload, AlignLeft, AlignRight, ArrowUp, ArrowDown, Type } from 'lucide-react';
+import { Save, Plus, Trash2, Shield, Globe, Palette, Monitor, Calculator, Building, User, Database, Download, Upload, AlignLeft, AlignRight, AlignTop, AlignBottom, Type, PaintBucket } from 'lucide-react';
 import { cn } from '../lib/utils';
 import * as XLSX from 'xlsx';
 
@@ -21,64 +21,6 @@ export default function Settings() {
   const [profileData, setProfileData] = useState({ name: '', phone: '', photoUrl: '' });
   const [securityData, setSecurityData] = useState({ pin: '', pinInactivityLimit: 60 });
   const [backupPin, setBackupPin] = useState('');
-  const [positionConfirmTimer, setPositionConfirmTimer] = useState<number | null>(null);
-  const [previousMenuPosition, setPreviousMenuPosition] = useState(settings.menuPosition);
-  const [timeLeft, setTimeLeft] = useState(0);
-
-  const handlePositionChange = (newPos: 'left' | 'right' | 'top' | 'bottom') => {
-    if (newPos === (settings.menuPosition || 'left')) return;
-    setPreviousMenuPosition(settings.menuPosition || 'left');
-    updateSettings({ menuPosition: newPos });
-    
-    setTimeLeft(15);
-    if (positionConfirmTimer) clearInterval(positionConfirmTimer);
-    
-    const interval = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    setPositionConfirmTimer(interval as any);
-  };
-
-  useEffect(() => {
-    if (timeLeft === 0 && positionConfirmTimer) {
-       clearInterval(positionConfirmTimer);
-       setPositionConfirmTimer(null);
-       updateSettings({ menuPosition: previousMenuPosition });
-       showToast("Se restableció la ubicación anterior", "info");
-    }
-  }, [timeLeft, positionConfirmTimer, previousMenuPosition, updateSettings, showToast]);
-
-  const confirmPositionChange = () => {
-    if (positionConfirmTimer) {
-      clearInterval(positionConfirmTimer);
-      setPositionConfirmTimer(null);
-      setTimeLeft(0);
-      showToast("Ubicación guardada", "success");
-    }
-  };
-
-  const cancelPositionChange = () => {
-    if (positionConfirmTimer) {
-      clearInterval(positionConfirmTimer);
-      setPositionConfirmTimer(null);
-      setTimeLeft(0);
-      updateSettings({ menuPosition: previousMenuPosition });
-      showToast("Se restableció la ubicación anterior", "info");
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (positionConfirmTimer) clearInterval(positionConfirmTimer);
-    };
-  }, [positionConfirmTimer]);
-
 
   useEffect(() => {
     if (user && profile) {
@@ -163,8 +105,8 @@ export default function Settings() {
   const positionOptions = [
     { name: 'Izquierda', value: 'left', icon: AlignLeft },
     { name: 'Derecha', value: 'right', icon: AlignRight },
-    { name: 'Arriba', value: 'top', icon: ArrowUp },
-    { name: 'Abajo', value: 'bottom', icon: ArrowDown },
+    { name: 'Arriba', value: 'top', icon: AlignTop },
+    { name: 'Abajo', value: 'bottom', icon: AlignBottom },
   ];
 
   // Backup handlers
@@ -225,20 +167,6 @@ export default function Settings() {
   };
 
   return (
-    <>
-      {positionConfirmTimer && (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-[100] bg-neutral-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-5">
-          <div>
-            <p className="font-bold text-sm">¿Mantener esta ubicación?</p>
-            <p className="text-xs text-neutral-400">Restableciendo en {timeLeft}s...</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={cancelPositionChange} className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 rounded-xl text-xs font-bold transition-colors">Revertir</button>
-            <button onClick={confirmPositionChange} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-xs font-bold transition-colors">Mantener</button>
-          </div>
-        </div>
-      )}
-
     <div className="max-w-7xl mx-auto space-y-6 lg:space-y-8 pb-20 animate-in fade-in duration-300">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Configuración</h1>
@@ -399,92 +327,8 @@ export default function Settings() {
                       <div className="relative z-10 text-base">Glassmorfismo</div>
                       <div className="relative z-10 text-xs font-normal opacity-80">Transparencias, desenfoques y efectos de cristal.</div>
                     </button>
-                    <button
-                      onClick={() => updateSettings({ uiStyle: 'liquid-glass' })}
-                      className={cn(
-                        "p-6 rounded-2xl border-2 transition-all font-bold text-left space-y-1 relative overflow-hidden sm:col-span-2",
-                        settings.uiStyle === 'liquid-glass' ? "bg-indigo-50/50 dark:bg-indigo-900/20 border-indigo-500 text-indigo-700 dark:text-indigo-300" : "bg-white dark:bg-neutral-800/40 border-neutral-100 dark:border-neutral-800 text-neutral-500"
-                      )}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 pointer-events-none backdrop-blur-md" />
-                      <div className="relative z-10 text-base">Liquid Glass</div>
-                      <div className="relative z-10 text-xs font-normal opacity-80">Efecto avanzado con desenfoques acrílicos, transparencias orgánicas y texturas.</div>
-                    </button>
-
                   </div>
                 </div>
-
-
-                {settings.uiStyle === 'liquid-glass' && (
-                  <div className="space-y-4 p-6 bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/20 rounded-2xl animate-in slide-in-from-top-2">
-                    <label className="text-sm font-bold text-indigo-900 dark:text-indigo-100 uppercase tracking-widest flex items-center gap-2">
-                      <PaintBucket className="w-4 h-4" /> Fondo Liquid Glass
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      {[
-                        { id: 'gradient', label: 'Gradiente Vibrante' },
-                        { id: 'animated', label: 'Fondo Animado' },
-                        { id: 'custom', label: 'Fondo Personalizado' }
-                      ].map(bg => (
-                        <button
-                          key={bg.id}
-                          onClick={() => updateSettings({ liquidBackgroundType: bg.id as any })}
-                          className={cn(
-                            "p-4 rounded-xl border-2 transition-all font-bold text-center text-sm",
-                            (settings.liquidBackgroundType || 'gradient') === bg.id
-                              ? "bg-indigo-600 border-indigo-600 text-white"
-                              : "bg-white dark:bg-neutral-800 border-transparent text-neutral-600 dark:text-neutral-400 hover:border-indigo-200"
-                          )}
-                        >
-                          {bg.label}
-                        </button>
-                      ))}
-                    </div>
-                    
-
-                    {settings.liquidBackgroundType === 'custom' && (
-                      <div className="mt-4 space-y-2">
-                        <label className="text-xs font-bold text-indigo-700 dark:text-indigo-300 block">URL de Imagen (o sube un archivo en Firebase)</label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="url"
-                            value={settings.liquidBackgroundValue || ''}
-                            onChange={(e) => updateSettings({ liquidBackgroundValue: e.target.value })}
-                            className="flex-1 bg-white dark:bg-neutral-800 border border-indigo-200 dark:border-indigo-800 rounded-xl p-3 text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
-                            placeholder="https://ejemplo.com/imagen.jpg"
-                          />
-                          <label className="p-3 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl cursor-pointer hover:bg-indigo-200 transition-colors">
-                            <Upload className="w-5 h-5" />
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (!file) return;
-                                try {
-                                  setLoading(true);
-                                  showToast("Subiendo imagen...", "info");
-                                  const storageRef = ref(storage, `backgrounds/${user?.uid || 'global'}_${Date.now()}_${file.name}`);
-                                  await uploadBytes(storageRef, file);
-                                  const url = await getDownloadURL(storageRef);
-                                  updateSettings({ liquidBackgroundValue: url });
-                                  showToast("Imagen subida y aplicada", "success");
-                                } catch (error) {
-                                  console.error("Error al subir:", error);
-                                  showToast("Error al subir la imagen", "error");
-                                } finally {
-                                  setLoading(false);
-                                }
-                              }}
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    )}
-
-                  </div>
-                )}
 
                 {/* Tipografía */}
                 <div className="space-y-4">
@@ -537,7 +381,7 @@ export default function Settings() {
                     {positionOptions.map(pos => (
                       <button
                         key={pos.value}
-                        onClick={() => handlePositionChange(pos.value as any)}
+                        onClick={() => updateSettings({ menuPosition: pos.value as any })}
                         className={cn(
                           "flex flex-col items-center justify-center p-6 rounded-2xl border-2 transition-all font-bold gap-3",
                           (settings.menuPosition || 'left') === pos.value
@@ -653,18 +497,6 @@ export default function Settings() {
                     <button onClick={handleAddBank} className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-xs hover:bg-blue-100 transition-all flex items-center gap-2">
                       <Plus className="w-4 h-4" /> Nuevo Banco
                     </button>
-                    <button
-                      onClick={() => updateSettings({ uiStyle: 'liquid-glass' })}
-                      className={cn(
-                        "p-6 rounded-2xl border-2 transition-all font-bold text-left space-y-1 relative overflow-hidden sm:col-span-2",
-                        settings.uiStyle === 'liquid-glass' ? "bg-indigo-50/50 dark:bg-indigo-900/20 border-indigo-500 text-indigo-700 dark:text-indigo-300" : "bg-white dark:bg-neutral-800/40 border-neutral-100 dark:border-neutral-800 text-neutral-500"
-                      )}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 pointer-events-none backdrop-blur-md" />
-                      <div className="relative z-10 text-base">Liquid Glass</div>
-                      <div className="relative z-10 text-xs font-normal opacity-80">Efecto avanzado con desenfoques acrílicos, transparencias orgánicas y texturas.</div>
-                    </button>
-
                   </div>
                   {(!settings.banks || settings.banks.length === 0) ? (
                     <p className="text-sm text-neutral-500 italic">No tienes entidades bancarias configuradas.</p>
@@ -768,7 +600,8 @@ export default function Settings() {
         </div>
       </div>
     </div>
-
-    </>
   );
 }
+"""
+with open('/app/applet/src/pages/Settings.tsx', 'w') as f:
+    f.write(code)

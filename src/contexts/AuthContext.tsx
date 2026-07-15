@@ -21,6 +21,7 @@ export interface UserProfile {
   lastPinEntry: string;
   createdAt: string;
   enterpriseId?: string;
+  photoUrl?: string;
 }
 
 interface AuthContextType {
@@ -110,8 +111,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               }
             }
           } else {
-            setActualProfile(null);
-            setProfile(null);
+            console.log("Profile not found locally, creating client-side fallback...");
+            const defaultProfile: UserProfile = {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              name: firebaseUser.displayName || 'Usuario Nuevo',
+              role: 'USER',
+              status: 'ENABLED',
+              hasCompletedOnboarding: false,
+              subscriptionEnd: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+              createdAt: new Date().toISOString()
+            };
+            try {
+              const { setDoc } = await import('firebase/firestore');
+              await setDoc(docRef, defaultProfile);
+              setActualProfile(defaultProfile);
+              setProfile(defaultProfile);
+            } catch (err) {
+              console.error("Could not create fallback profile", err);
+              setActualProfile(null);
+              setProfile(null);
+            }
           }
         } catch (error) {
           console.error("Error fetching user profile:", error);

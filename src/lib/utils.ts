@@ -60,8 +60,7 @@ export async function hashPin(pin: string): Promise<string> {
 
 export const SUPER_ADMIN_EMAILS = [
   import.meta.env.VITE_SUPER_ADMIN_EMAIL,
-  'marcelogutama3eroa@gmail.com',
-  'blacksirius869@gmail.com'
+  ...(import.meta.env.VITE_SUPER_ADMIN_EMAILS || '').split(',').map(e => e.trim())
 ].filter(Boolean) as string[];
 
 export function isSuperAdminEmail(email?: string | null): boolean {

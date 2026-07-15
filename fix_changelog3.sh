@@ -1,0 +1,2 @@
+sed -i 's/"version": "4.6.1"/"version": "4.6.2"/g' /app/applet/package.json
+sed -i '/export const staticChangelog: ChangelogRelease\[\] = \[/a\  {\n    version: "4.6.2",\n    date: new Date().toISOString(),\n    changes: [\n      "Corrección de bug crítico de redirecciones infinitas durante el inicio de sesión",\n      "Mejora en la creación de perfiles locales como respaldo"\n    ],\n  },' /app/applet/src/lib/changelog.ts
