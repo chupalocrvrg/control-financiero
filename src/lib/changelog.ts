@@ -11,6 +11,13 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.12.0",
+    date: new Date().toISOString(),
+    changes: [
+      "Seguridad Multi-inquilino de Extremo a Extremo en Finanzas (Checks, Invoices, Beneficiaries): Corrección integral de las reglas de seguridad de Firestore (`firestore.rules`) y de la validación lógica para listados y lecturas directas. Se migró la restricción estricta de propiedad por usuario creador (`userId == request.auth.uid`) hacia la política dinámica multi-inquilino corporativa unificada (`isEnterpriseData`). Esto soluciona de raíz el error donde el propietario de una cuenta corporativa o sus empleados autorizados (como bodegueros) veían la base de datos completamente vacía al iniciar sesión directamente, mientras que en la simulación administrativa sí se visualizaba. Ahora todos los datos financieros son legibles y protegidos de forma segura bajo el mismo Tenant ID empresarial (`enterpriseId`)."
+    ],
+  },
+  {
     version: "4.11.1",
     date: new Date().toISOString(),
     changes: [

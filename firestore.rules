@@ -162,23 +162,19 @@ service cloud.firestore {
     }
 
     match /beneficiaries/{id} {
-      allow read: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
-      
-      
+      allow read, list: if isVerified() && isEnterpriseData(resource.data);
       allow create: if isAccountActive() && isValidBeneficiary(incoming()) && isValidId(id) &&
                     incoming().createdAt == request.time;
-      allow update: if isAdmin();
-      allow delete: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isVerified() && isEnterpriseData(resource.data);
+      allow delete: if isVerified() && isEnterpriseData(resource.data);
     }
 
     match /invoices/{id} {
-      allow read: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
-      
-      
+      allow read, list: if isVerified() && isEnterpriseData(resource.data);
       allow create: if isAccountActive() && isValidInvoice(incoming()) && isValidId(id) &&
                     incoming().createdAt == request.time;
-      allow update: if isAdmin();
-      allow delete: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isVerified() && isEnterpriseData(resource.data);
+      allow delete: if isVerified() && isEnterpriseData(resource.data);
     }
 
     match /employees/{id} {
@@ -223,8 +219,7 @@ service cloud.firestore {
     }
 
     match /checks/{id} {
-      allow read: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow list: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read, list: if isVerified() && isEnterpriseData(resource.data);
       
       allow create: if isAccountActive() && isValidCheck(incoming()) && isValidId(id) && 
                     exists(/databases/$(database)/documents/invoices/$(incoming().invoiceId)) &&
@@ -232,7 +227,7 @@ service cloud.firestore {
       
       allow update: if isVerified() && (
         isAdmin() || (
-          resource.data.userId == request.auth.uid &&
+          isEnterpriseData(resource.data) &&
           isValidCheck(incoming()) &&
           incoming().userId == existing().userId &&
           incoming().invoiceId == existing().invoiceId &&
@@ -253,7 +248,7 @@ service cloud.firestore {
         )
       );
       
-      allow delete: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isVerified() && isEnterpriseData(resource.data);
     }
 
     match /settings/{userId} {
