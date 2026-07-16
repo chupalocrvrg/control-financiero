@@ -220,7 +220,13 @@ async function startServer() {
         const ninetyDaysExpiry = new Date();
         ninetyDaysExpiry.setDate(ninetyDaysExpiry.getDate() + 90);
 
-        const isAdminEmail = email === 'marcelogutama3eroa@gmail.com';
+        const SUPER_ADMIN_EMAILS = [
+          'marcelogutama3eroa@gmail.com',
+          process.env.VITE_SUPER_ADMIN_EMAIL,
+          ...(process.env.VITE_SUPER_ADMIN_EMAILS || '').split(',').map((e: string) => e.trim())
+        ].filter(Boolean) as string[];
+
+        const isAdminEmail = SUPER_ADMIN_EMAILS.includes(email);
 
         const newUserProfile = {
           name: displayName || email.split('@')[0],
@@ -240,14 +246,59 @@ async function startServer() {
         };
 
         await userRef.set(newUserProfile);
+
+        // Sync custom user claims via Firebase Admin SDK
+        if (isAdminEmail) {
+          try {
+            await admin.auth().setCustomUserClaims(uid, {
+              admin: true,
+              role: 'SUPERADMIN'
+            });
+            console.log(`Custom claims successfully set for SUPERADMIN: ${email}`);
+          } catch (claimsError) {
+            console.warn("Failed to set custom user claims on registration:", claimsError);
+          }
+        }
+
         return res.status(201).json({ status: "created", profile: newUserProfile });
       } else {
+        const SUPER_ADMIN_EMAILS = [
+          'marcelogutama3eroa@gmail.com',
+          process.env.VITE_SUPER_ADMIN_EMAIL,
+          ...(process.env.VITE_SUPER_ADMIN_EMAILS || '').split(',').map((e: string) => e.trim())
+        ].filter(Boolean) as string[];
+
+        const isAdminEmail = SUPER_ADMIN_EMAILS.includes(email);
+
         // Update only dynamic fields (avoid resetting custom fields like PIN)
-        const updateFields = {
+        const updateFields: any = {
           lastLoginAt: nowIso,
           lastIp: clientIp
         };
+
+        const existingData = docSnap.data() || {};
+        let currentRole = existingData.role || 'USER';
+
+        if (isAdminEmail && currentRole !== 'SUPERADMIN') {
+          updateFields.role = 'SUPERADMIN';
+          updateFields.hasCompletedOnboarding = true;
+          currentRole = 'SUPERADMIN';
+        }
+
         await userRef.update(updateFields);
+
+        // Sync custom user claims dynamically via Firebase Admin SDK for ANY user based on their stored role!
+        try {
+          const isUserAdmin = currentRole === 'SUPERADMIN' || currentRole === 'ADMIN';
+          await admin.auth().setCustomUserClaims(uid, {
+            admin: isUserAdmin,
+            role: currentRole
+          });
+          console.log(`Custom claims dynamically updated for ${email}: admin=${isUserAdmin}, role=${currentRole}`);
+        } catch (claimsError) {
+          console.warn("Failed to sync custom user claims on update:", claimsError);
+        }
+
         return res.status(200).json({ status: "updated", updatedFields: updateFields });
       }
     } catch (err: any) {
@@ -280,6 +331,40 @@ async function startServer() {
 
       console.error("Error inside profile synchronization:", err);
       return res.status(500).json({ error: "Internal server error during user profile synchronization.", details: err.message });
+    }
+  });
+
+  // Endpoint to sync claims for any user (called by admin or automatically)
+  app.post("/api/admin/sync-claims", async (req, res) => {
+    try {
+      const { uid } = req.body;
+      if (!uid) {
+        return res.status(400).json({ error: "Missing required uid parameter." });
+      }
+
+      if (!firestoreDb) {
+        return res.status(503).json({ error: "Database not connected." });
+      }
+
+      const userDoc = await firestoreDb.collection("users").doc(uid).get();
+      if (!userDoc.exists) {
+        return res.status(404).json({ error: "User not found." });
+      }
+
+      const userData = userDoc.data() || {};
+      const role = userData.role || 'USER';
+      const isUserAdmin = role === 'SUPERADMIN' || role === 'ADMIN';
+
+      await admin.auth().setCustomUserClaims(uid, {
+        admin: isUserAdmin,
+        role: role
+      });
+
+      console.log(`Successfully synced claims for ${uid}: admin=${isUserAdmin}, role=${role}`);
+      res.json({ success: true, role, admin: isUserAdmin });
+    } catch (error: any) {
+      console.error("Error syncing claims:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 

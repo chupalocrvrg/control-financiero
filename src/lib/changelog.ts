@@ -11,6 +11,39 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.11.0",
+    date: new Date().toISOString(),
+    changes: [
+      "Gestión Dinámica de Roles y Multi-Administrador: Transición de correos electrónicos administradores hardcodeados a un sistema dinámico basado en Custom Claims y base de datos Firestore. Permite la asignación instantánea de roles (SUPERADMIN, ADMIN, etc.) desde la aplicación y sincroniza las credenciales inmediatamente mediante el nuevo endpoint del servidor backend `/api/admin/sync-claims`.",
+      "Ampliación del Registro de Auditoría (Audit Log): Implementación de trazabilidad granular para mutaciones de datos críticas en Empleados (`EMPLOYEE_UPDATE`), Presupuestos (`BUDGET_UPDATE`), Ventas (`SALE_UPDATE`) y Cobranzas (`COLLECTION_UPDATE`).",
+      "Seguimiento de Lecturas Sensibles: Incorporación de registro de auditoría (`SENSITIVE_READ`) al descargar copias de seguridad de la base de datos (formatos JSON/Excel) y exportar reportes comerciales personalizados a PDF o Excel.",
+      "Seguridad Multi-inquilino en el Dashboard: Refactorización y robustecimiento de las consultas de cheques de pago e indicadores clave del tablero de control principal, garantizando aislamiento estricto y total visibilidad mediante la segmentación exclusiva por `enterpriseId` (tenant) en lugar de filtros individuales de usuario.",
+      "Función de Redondeo Financiero de Precisión: Adición de la utilidad matemática `roundToTwo` para evitar de forma garantizada los errores de punto flotante en cálculos de centavos, respaldada por su propia suite de pruebas unitarias automatizadas."
+    ],
+  },
+  {
+    version: "4.10.0",
+    date: new Date().toISOString(),
+    changes: [
+      "Estructuración de Pruebas Unitarias Automatizadas: Integración del framework de pruebas ultra-rápido Vitest, con la creación de una suite de pruebas para funciones de cálculo matemático crítico (algoritmo Penny Drop para cuotas), formateadores de monedas ecuatorianas, generación incremental de números de cheques con padding, y detección de superadministradores.",
+      "Configuración de CI/CD (Quality Assurance): Implementación de un flujo de integración continua en GitHub Actions (.github/workflows/ci.yml) para verificar de forma automatizada los tipos, la calidad del código mediante linter y la ejecución exitosa de pruebas unitarias ante cada push o pull request.",
+      "Actualización e Identidad de Proyecto: Corrección del nombre del paquete en `package.json` de 'react-example' a 'control-financiero' para dotar al proyecto de una identidad pulida y profesional.",
+      "Documentación Técnica Integral (README.md): Creación de un manual de arquitectura robusto que detalla el funcionamiento full-stack (React + Express), el modelo de seguridad por roles y Claims de Firebase, la estrategia de caché offline multidispositivo y las opciones de despliegue dual (Ventas/Producción VPS frente a Serverless en Vercel)."
+    ],
+  },
+  {
+    version: "4.9.1",
+    date: new Date().toISOString(),
+    changes: [
+      "Auditoría y Corrección de Reglas de Seguridad (Firestore): Reestructuración de políticas de lectura para colecciones clave de finanzas (checks, invoices, beneficiaries). Ahora se restringe estrictamente el acceso de lectura para que solo el propietario (resource.data.userId == request.auth.uid) o un administrador puedan consultar estos registros de forma segura.",
+      "Eliminación de Emails Hardcodeados en Reglas: Remoción de la verificación de email fija en firestore.rules para el rol SUPERADMIN. En su lugar, se implementó el uso estándar de Claims Personalizados de Firebase Auth y consultas dinámicas en la colección de usuarios.",
+      "Sincronización de Custom Claims en Backend: Actualización del servidor Express en `/api/users/profile` para asignar y sincronizar automáticamente las credenciales personalizadas de administración (Custom Claims) en Firebase Auth utilizando el SDK Admin.",
+      "Restauración de Verificación de Correo: Modificación del método isVerified() en las reglas para requerir que los usuarios tengan su correo verificado (email_verified == true) antes de otorgar acceso de escritura o lectura.",
+      "Migración a Distribución Segura de SheetJS (xlsx): Reemplazo de la dependencia xlsx convencional de npm por el paquete empaquetado directamente desde su CDN oficial y seguro (https://cdn.sheetjs.com) para evitar vulnerabilidades críticas de Prototype Pollution y ReDoS.",
+      "Eliminación de Archivos Temporales de Reglas: Limpieza de archivos de borrador obsoletos (como DRAFT_firestore.rules) en el repositorio para evitar despliegues accidentales inseguros."
+    ],
+  },
+  {
     version: "4.9.0",
     date: new Date().toISOString(),
     changes: [

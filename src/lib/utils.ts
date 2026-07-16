@@ -42,6 +42,13 @@ export function formatCurrency(amount: number, currencyCode: string = 'USD'): st
   }
 }
 
+/**
+ * Safely rounds any financial float to exactly 2 decimal places to avoid standard IEEE-754 binary representation float errors.
+ */
+export function roundToTwo(amount: number): number {
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
 export function generateCheckNumber(baseNumber: string, index: number): string {
   if (!baseNumber) return '';
   const num = parseInt(baseNumber, 10);

@@ -13,6 +13,11 @@ export enum AuditAction {
   CHECK_RESTORE = 'CHECK_RESTORE',
   DB_VACUUM = 'DB_VACUUM',
   SETTINGS_UPDATE = 'SETTINGS_UPDATE',
+  SENSITIVE_READ = 'SENSITIVE_READ',
+  EMPLOYEE_UPDATE = 'EMPLOYEE_UPDATE',
+  BUDGET_UPDATE = 'BUDGET_UPDATE',
+  SALE_UPDATE = 'SALE_UPDATE',
+  COLLECTION_UPDATE = 'COLLECTION_UPDATE',
 }
 
 export async function logAudit(action: AuditAction, details: string, targetId?: string, overrideUser?: User | null) {

@@ -4,6 +4,7 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, quer
 import { Plus, Pencil, Trash2, ShoppingCart, AlertCircle, Save, X, Calendar, User, DollarSign, Bike } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import { logAudit, AuditAction } from '../lib/audit';
 import { format } from 'date-fns';
 import { isSuperAdminEmail } from '../lib/utils';
 
@@ -229,11 +230,13 @@ export default function Sales() {
 
       if (editingSale) {
         await updateDoc(doc(db, 'sales', editingSale.id), saleData);
+        await logAudit(AuditAction.SALE_UPDATE, `Venta modificada para cliente: ${saleData.clientName || 'Sin Nombre'}, Artículo: ${saleData.article}, Valor: $${saleData.totalValue}`, editingSale.id);
       } else {
-        await addDoc(collection(db, 'sales'), {
+        const newDoc = await addDoc(collection(db, 'sales'), {
           ...saleData,
           createdAt: Timestamp.now()
         });
+        await logAudit(AuditAction.SALE_UPDATE, `Venta registrada para cliente: ${saleData.clientName || 'Sin Nombre'}, Artículo: ${saleData.article}, Valor: $${saleData.totalValue}`, newDoc.id);
       }
       setIsModalOpen(false);
       fetchData();
@@ -248,7 +251,9 @@ export default function Sales() {
   const handleDelete = async (id: string) => {
     if (await showConfirm('Eliminar Venta', '¿Está seguro de eliminar este registro?', { type: 'danger' })) {
       try {
+        const saleToDelete = sales.find(s => s.id === id);
         await deleteDoc(doc(db, 'sales', id));
+        await logAudit(AuditAction.SALE_UPDATE, `Venta eliminada para cliente: ${saleToDelete?.clientName || 'Sin Nombre'}, Artículo: ${saleToDelete?.article}, Valor: $${saleToDelete?.totalValue}`, id);
         fetchData();
         showToast('Venta eliminada exitosamente', 'success');
       } catch (err: any) {

@@ -4,6 +4,7 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, quer
 import { Plus, Pencil, Trash2, Receipt, AlertCircle, Save, X, Calendar, User, DollarSign, FileText } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import { logAudit, AuditAction } from '../lib/audit';
 import { format } from 'date-fns';
 
 interface Employee {
@@ -179,11 +180,13 @@ export default function Collections() {
 
       if (editingCollection) {
         await updateDoc(doc(db, 'collections', editingCollection.id), collData);
+        await logAudit(AuditAction.COLLECTION_UPDATE, `Cobranza modificada: Recibo=${collData.noReceipt ? 'Sin Recibo' : collData.initialReceipt + '-' + collData.finalReceipt}, Total=$${collData.totalCollected}`, editingCollection.id);
       } else {
-        await addDoc(collection(db, 'collections'), {
+        const newDoc = await addDoc(collection(db, 'collections'), {
           ...collData,
           createdAt: Timestamp.now()
         });
+        await logAudit(AuditAction.COLLECTION_UPDATE, `Cobranza registrada: Recibo=${collData.noReceipt ? 'Sin Recibo' : collData.initialReceipt + '-' + collData.finalReceipt}, Total=$${collData.totalCollected}`, newDoc.id);
       }
       setIsModalOpen(false);
       fetchData();
@@ -198,7 +201,9 @@ export default function Collections() {
   const handleDelete = async (id: string) => {
     if (await showConfirm('Eliminar Cobranza', '¿Está seguro de eliminar este registro?', { type: 'danger' })) {
       try {
+        const collToDelete = collections.find(c => c.id === id);
         await deleteDoc(doc(db, 'collections', id));
+        await logAudit(AuditAction.COLLECTION_UPDATE, `Cobranza eliminada: Recibo=${collToDelete?.noReceipt ? 'Sin Recibo' : collToDelete?.initialReceipt + '-' + collToDelete?.finalReceipt}, Total=$${collToDelete?.totalCollected}`, id);
         fetchData();
         showToast('Cobranza eliminada exitosamente', 'success');
       } catch (err: any) {

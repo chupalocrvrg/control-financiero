@@ -1,7 +1,7 @@
 {
-  "name": "react-example",
+  "name": "control-financiero",
   "private": true,
-  "version": "4.9.0",
+  "version": "4.11.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -9,7 +9,8 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -36,7 +37,7 @@
     "sharp": "^0.35.3",
     "tailwind-merge": "^3.5.0",
     "vite-plugin-pwa": "^1.3.0",
-    "xlsx": "^0.18.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -48,6 +49,7 @@
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "^4.1.10"
   }
 }

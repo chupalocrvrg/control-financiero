@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import { collection, getDocs, doc, setDoc, query, orderBy, where } from 'firebase/firestore';
 import { Target, AlertCircle, Save, Calendar, Search } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { logAudit, AuditAction } from '../lib/audit';
 import { format, startOfMonth, addMonths, subMonths, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -114,6 +115,7 @@ export default function Budgets() {
       });
       
       await Promise.all(promises);
+      await logAudit(AuditAction.BUDGET_UPDATE, `Presupuestos guardados para el mes ${currentMonth}. Se registraron/actualizaron ${Object.keys(budgets).length} presupuestos.`);
       setSuccess('Presupuestos guardados exitosamente');
       
       setTimeout(() => setSuccess(null), 3000);

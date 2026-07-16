@@ -89,11 +89,12 @@ export default function Dashboard() {
     if (!user) return;
     setLoading(true);
     const path = 'checks';
+    const currentEnterpriseId = profile?.enterpriseId || user?.uid;
     try {
       // 1. Fetch checks
       const q = query(
         collection(db, path), 
-        where('userId', '==', user.uid),
+        where('enterpriseId', '==', currentEnterpriseId),
         where('status', 'in', ['PENDING', 'PAID'])
       );
       const snapshot = await getDocs(q);
@@ -102,7 +103,6 @@ export default function Dashboard() {
 
       // 2. Fetch Commerce Data
       const currentMonth = format(new Date(), 'yyyy-MM');
-      const currentEnterpriseId = profile?.enterpriseId || user?.uid;
       
       const empQ = query(collection(db, 'employees'), where('enterpriseId', '==', currentEnterpriseId));
       const empSnap = await getDocs(empQ);
@@ -426,7 +426,7 @@ const handleGenerateAdvancedReport = async (reportType: 'pdf' | 'excel') => {
 
       const checksQ = query(
         collection(db, 'checks'), 
-        where('userId', '==', user.uid),
+        where('enterpriseId', '==', currentEnterpriseId),
         where('dueDate', '>=', reportStartDate),
         where('dueDate', '<=', reportEndDate)
       );
@@ -709,6 +709,7 @@ const handleGenerateAdvancedReport = async (reportType: 'pdf' | 'excel') => {
         }
 
         XLSX.writeFile(wb, `Reporte_Avanzado_${reportStartDate}_${reportEndDate}.xlsx`);
+        await logAudit(AuditAction.SENSITIVE_READ, `Exportación de reporte avanzado a Excel. Periodo: ${reportStartDate} al ${reportEndDate}.`);
       }
       setShowCustomReportModal(false);
     } catch (e) {
@@ -719,7 +720,7 @@ const handleGenerateAdvancedReport = async (reportType: 'pdf' | 'excel') => {
     }
   };
 
-  const generateCustomReportPdf = (filteredChecks: Check[]) => {
+  const generateCustomReportPdf = async (filteredChecks: Check[]) => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -779,6 +780,7 @@ const handleGenerateAdvancedReport = async (reportType: 'pdf' | 'excel') => {
     }
 
     doc.save(`Reporte_Personalizado_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`);
+    await logAudit(AuditAction.SENSITIVE_READ, `Exportación de reporte personalizado a PDF. Periodo: ${reportStartDate} al ${reportEndDate}.`);
   };
 
   if (profile?.role === 'BODEGUERO') {

@@ -4,6 +4,7 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, quer
 import { Plus, Pencil, Trash2, Users, AlertCircle, Save, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import { logAudit, AuditAction } from '../lib/audit';
 
 interface Employee {
   id: string;
@@ -92,14 +93,16 @@ export default function Employees() {
           lastName: formData.lastName,
           role: formData.role
         });
+        await logAudit(AuditAction.EMPLOYEE_UPDATE, `Empleado modificado: ${formData.name} ${formData.lastName} (${formData.role})`, editingEmployee.id);
       } else {
-        await addDoc(collection(db, 'employees'), {
+        const newDoc = await addDoc(collection(db, 'employees'), {
           name: formData.name,
           lastName: formData.lastName,
           role: formData.role,
           enterpriseId: currentEnterpriseId,
           createdAt: Timestamp.now()
         });
+        await logAudit(AuditAction.EMPLOYEE_UPDATE, `Empleado creado: ${formData.name} ${formData.lastName} (${formData.role})`, newDoc.id);
       }
       setIsModalOpen(false);
       fetchEmployees();
@@ -114,7 +117,9 @@ export default function Employees() {
   const handleDelete = async (id: string) => {
     if (await showConfirm('Eliminar Empleado', '¿Está seguro de eliminar este empleado?', { type: 'danger' })) {
       try {
+        const empToDelete = employees.find(e => e.id === id);
         await deleteDoc(doc(db, 'employees', id));
+        await logAudit(AuditAction.EMPLOYEE_UPDATE, `Empleado eliminado: ${empToDelete ? empToDelete.name + ' ' + empToDelete.lastName : id}`, id);
         fetchEmployees();
         showToast('Empleado eliminado exitosamente', 'success');
       } catch (err: any) {

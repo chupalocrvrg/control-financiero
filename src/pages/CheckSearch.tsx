@@ -10,6 +10,7 @@ import { Download, Search, ChevronDown, ChevronRight, FilterX, FileText, CheckCi
 import * as XLSX from 'xlsx';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { isSuperAdminEmail } from '../lib/utils';
+import { logAudit, AuditAction } from '../lib/audit';
 
 interface Invoice {
   id: string;
@@ -278,6 +279,7 @@ export default function CheckSearch() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Cheques");
     XLSX.writeFile(wb, `Reporte_Cheques_${format(new Date(), 'yyyyMMdd')}.xlsx`);
+    logAudit(AuditAction.SENSITIVE_READ, `Exportación de reporte de cheques a Excel. Se exportaron ${exportData.length} registros.`);
   };
 
   const clearFilters = () => {

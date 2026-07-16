@@ -439,6 +439,20 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
       }
       
       await updateDoc(userRef, updateData);
+      
+      // Sync Custom Claims on backend dynamically for the modified user
+      try {
+        await fetch('/api/admin/sync-claims', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ uid: editingEntityUser.id })
+        });
+      } catch (claimsSyncError) {
+        console.warn("Backend claims sync pending or failed:", claimsSyncError);
+      }
+
       await loadUsers();
       logAudit(AuditAction.SETTINGS_UPDATE, `Relación de entidad actualizada para ${editingEntityUser.email}: Rol=${entityFormData.role}, Empresa=${entityFormData.enterpriseId || 'Ninguna'}`);
       setShowEntityModal(false);

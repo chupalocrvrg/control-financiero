@@ -19,7 +19,7 @@ service cloud.firestore {
     }
 
     function isVerified() {
-      return isSignedIn(); // Relaxed email_verified for debugging
+      return isSignedIn() && request.auth.token.email_verified == true;
     }
 
     function isAdmin() {
@@ -37,7 +37,7 @@ service cloud.firestore {
     function isSuperAdminFallback() {
       return isVerified() && (
         request.auth.token.role == 'SUPERADMIN' ||
-        request.auth.token.email.matches('(?i).*marcelogutama.*')
+        request.auth.token.admin == true
       );
     }
 
@@ -162,7 +162,7 @@ service cloud.firestore {
     }
 
     match /beneficiaries/{id} {
-      allow read: if isVerified();
+      allow read: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
       
       
       allow create: if isAccountActive() && isValidBeneficiary(incoming()) && isValidId(id) &&
@@ -172,7 +172,7 @@ service cloud.firestore {
     }
 
     match /invoices/{id} {
-      allow read: if isVerified();
+      allow read: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
       
       
       allow create: if isAccountActive() && isValidInvoice(incoming()) && isValidId(id) &&
@@ -223,8 +223,8 @@ service cloud.firestore {
     }
 
     match /checks/{id} {
-      allow read: if isVerified();
-      allow list: if isVerified();
+      allow read: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isVerified() && (resource.data.userId == request.auth.uid || isAdmin());
       
       allow create: if isAccountActive() && isValidCheck(incoming()) && isValidId(id) && 
                     exists(/databases/$(database)/documents/invoices/$(incoming().invoiceId)) &&

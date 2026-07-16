@@ -10,6 +10,7 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { Save, Plus, Trash2, Shield, Globe, Palette, Monitor, Calculator, Sun, Moon, PaintBucket, Building, User, Database, Download, Upload, AlignLeft, AlignRight, ArrowUp, ArrowDown, Type } from 'lucide-react';
 import { cn } from '../lib/utils';
 import * as XLSX from 'xlsx';
+import { logAudit, AuditAction } from '../lib/audit';
 
 export default function Settings() {
   const { user, profile, updateProfile } = useAuth();
@@ -186,11 +187,13 @@ export default function Settings() {
         a.href = url;
         a.download = `backup_control360_${new Date().toISOString().split('T')[0]}.json`;
         a.click();
+        await logAudit(AuditAction.SENSITIVE_READ, `Exportación de copia de seguridad (JSON) de la base de datos.`);
       } else {
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.json_to_sheet([{ status: "exported" }]);
         XLSX.utils.book_append_sheet(wb, ws, "Backup");
         XLSX.writeFile(wb, `backup_control360_${new Date().toISOString().split('T')[0]}.xlsx`);
+        await logAudit(AuditAction.SENSITIVE_READ, `Exportación de copia de seguridad (Excel) de la base de datos.`);
       }
     } catch (e) {
       console.error(e);
