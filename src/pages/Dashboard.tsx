@@ -91,14 +91,15 @@ export default function Dashboard() {
     const path = 'checks';
     const currentEnterpriseId = profile?.enterpriseId || user?.uid;
     try {
-      // 1. Fetch checks
+      // 1. Fetch checks - query by enterpriseId only and filter status client-side to prevent missing index errors
       const q = query(
         collection(db, path), 
-        where('enterpriseId', '==', currentEnterpriseId),
-        where('status', 'in', ['PENDING', 'PAID'])
+        where('enterpriseId', '==', currentEnterpriseId)
       );
       const snapshot = await getDocs(q);
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Check));
+      const data = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as Check))
+        .filter(c => ['PENDING', 'PAID'].includes(c.status));
       setChecks(data);
 
       // 2. Fetch Commerce Data
@@ -116,22 +117,26 @@ export default function Dashboard() {
       const endOfMonthStr = format(endOfMonth(new Date()), 'yyyy-MM-dd');
       const historyStartStr = format(subMonths(startOfMonth(new Date()), 12), 'yyyy-MM-dd');
 
+      // Query by enterpriseId and filter historyStartStr client-side to avoid compound index requirements
       const allSalesQ = query(
         collection(db, 'sales'), 
-        where('enterpriseId', '==', currentEnterpriseId),
-        where('date', '>=', historyStartStr)
+        where('enterpriseId', '==', currentEnterpriseId)
       );
       const allSalesSnap = await getDocs(allSalesQ);
-      const allSalesData = allSalesSnap.docs.map(d => d.data());
+      const allSalesData = allSalesSnap.docs
+        .map(d => d.data())
+        .filter(s => s.date && s.date >= historyStartStr);
       setAllSales(allSalesData);
 
+      // Query by enterpriseId and filter historyStartStr client-side to avoid compound index requirements
       const allCollQ = query(
         collection(db, 'collections'), 
-        where('enterpriseId', '==', currentEnterpriseId),
-        where('initialDate', '>=', historyStartStr)
+        where('enterpriseId', '==', currentEnterpriseId)
       );
       const allCollSnap = await getDocs(allCollQ);
-      const allCollsData = allCollSnap.docs.map(d => d.data());
+      const allCollsData = allCollSnap.docs
+        .map(d => d.data())
+        .filter(c => c.initialDate && c.initialDate >= historyStartStr);
       setAllCollections(allCollsData);
 
       const sales = allSalesData.filter(s => {
@@ -426,14 +431,12 @@ const handleGenerateAdvancedReport = async (reportType: 'pdf' | 'excel') => {
 
       const checksQ = query(
         collection(db, 'checks'), 
-        where('enterpriseId', '==', currentEnterpriseId),
-        where('dueDate', '>=', reportStartDate),
-        where('dueDate', '<=', reportEndDate)
+        where('enterpriseId', '==', currentEnterpriseId)
       );
       const checksSnap = await getDocs(checksQ);
       const filteredChecks = checksSnap.docs
         .map(d => ({ id: d.id, ...d.data() }) as any)
-        .filter(c => ['PENDING', 'PAID'].includes(c.status))
+        .filter(c => c.dueDate && c.dueDate >= reportStartDate && c.dueDate <= reportEndDate && ['PENDING', 'PAID'].includes(c.status))
         .sort((a, b) => {
            const timeA = a.dueDate ? parseISO(a.dueDate).getTime() : 0;
            const timeB = b.dueDate ? parseISO(b.dueDate).getTime() : 0;
@@ -442,21 +445,21 @@ const handleGenerateAdvancedReport = async (reportType: 'pdf' | 'excel') => {
 
       const salesQ = query(
         collection(db, 'sales'), 
-        where('enterpriseId', '==', currentEnterpriseId),
-        where('date', '>=', reportStartDate),
-        where('date', '<=', reportEndDate)
+        where('enterpriseId', '==', currentEnterpriseId)
       );
       const salesSnap = await getDocs(salesQ);
-      const salesData = salesSnap.docs.map(d => d.data());
+      const salesData = salesSnap.docs
+        .map(d => d.data())
+        .filter(s => s.date && s.date >= reportStartDate && s.date <= reportEndDate);
 
       const collQ = query(
         collection(db, 'collections'), 
-        where('enterpriseId', '==', currentEnterpriseId),
-        where('initialDate', '>=', reportStartDate),
-        where('initialDate', '<=', reportEndDate)
+        where('enterpriseId', '==', currentEnterpriseId)
       );
       const collSnap = await getDocs(collQ);
-      const collsData = collSnap.docs.map(d => d.data());
+      const collsData = collSnap.docs
+        .map(d => d.data())
+        .filter(c => c.initialDate && c.initialDate >= reportStartDate && c.initialDate <= reportEndDate);
 
       const empQ = query(collection(db, 'employees'), where('enterpriseId', '==', currentEnterpriseId));
       const empSnap = await getDocs(empQ);

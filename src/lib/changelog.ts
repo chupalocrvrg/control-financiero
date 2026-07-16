@@ -11,6 +11,13 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.11.1",
+    date: new Date().toISOString(),
+    changes: [
+      "Optimización Index-Free para Multi-Inquilinato: Reestructuración de las consultas clave de Cheques, Ventas y Cobranzas en el Dashboard y reportes avanzados. Ahora realiza búsquedas rápidas por `enterpriseId` y delega las exclusiones de estados o rangos de fechas a filtros del lado del cliente. Esto soluciona por completo las excepciones silenciosas de Firestore por falta de índices compuestos, resolviendo el problema de registros invisibles en cuentas corporativas."
+    ],
+  },
+  {
     version: "4.11.0",
     date: new Date().toISOString(),
     changes: [
