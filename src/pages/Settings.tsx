@@ -227,7 +227,12 @@ export default function Settings() {
   return (
     <>
       {positionConfirmTimer && (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-[100] bg-neutral-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-5">
+        <div className={cn(
+          "fixed left-1/2 transform -translate-x-1/2 z-[100] bg-neutral-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in",
+          settings.menuPosition === 'bottom' 
+            ? "top-6 slide-in-from-top-5" 
+            : "bottom-6 slide-in-from-bottom-5"
+        )}>
           <div>
             <p className="font-bold text-sm">¿Mantener esta ubicación?</p>
             <p className="text-xs text-neutral-400">Restableciendo en {timeLeft}s...</p>
@@ -483,6 +488,90 @@ export default function Settings() {
                       </div>
                     )}
 
+                  </div>
+                )}
+
+                {/* Opciones de Magnificación del Dock (Solo si liquid-glass está seleccionado) */}
+                {settings.uiStyle === 'liquid-glass' && (
+                  <div className="space-y-4 p-6 bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/20 rounded-2xl animate-in slide-in-from-top-2">
+                    <label className="text-sm font-bold text-indigo-900 dark:text-indigo-100 uppercase tracking-widest flex items-center gap-2">
+                      <Palette className="w-4 h-4" /> Efecto de Magnificación del Dock (macOS Style)
+                    </label>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                      Habilita la animación de lupa interactiva en la barra de navegación al pasar el cursor.
+                    </p>
+
+                    <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-800/40 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                      <div>
+                        <div className="text-sm font-bold text-neutral-800 dark:text-neutral-200">Activar Magnificación</div>
+                        <div className="text-xs text-neutral-500">Aumenta el tamaño del icono bajo el cursor.</div>
+                      </div>
+                      <button
+                        onClick={() => updateSettings({ dockMagnification: !settings.dockMagnification })}
+                        className={cn(
+                          "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                          settings.dockMagnification ? "bg-indigo-600" : "bg-neutral-200 dark:bg-neutral-700"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                            settings.dockMagnification ? "translate-x-5" : "translate-x-0"
+                          )}
+                        />
+                      </button>
+                    </div>
+
+                    {settings.dockMagnification && (
+                      <>
+                        <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-800/40 rounded-xl border border-neutral-100 dark:border-neutral-800 animate-in fade-in duration-200">
+                          <div>
+                            <div className="text-sm font-bold text-neutral-800 dark:text-neutral-200">Efecto de Proximidad</div>
+                            <div className="text-xs text-neutral-500">Los iconos vecinos crecen ligeramente (estilo fluido orgánico).</div>
+                          </div>
+                          <button
+                            onClick={() => updateSettings({ dockProximity: !settings.dockProximity })}
+                            className={cn(
+                              "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                              settings.dockProximity ? "bg-indigo-600" : "bg-neutral-200 dark:bg-neutral-700"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                                settings.dockProximity ? "translate-x-5" : "translate-x-0"
+                              )}
+                            />
+                          </button>
+                        </div>
+
+                        <div className="space-y-2 animate-in fade-in duration-200">
+                          <label className="text-xs font-bold text-indigo-700 dark:text-indigo-300 block">Tipo de Magnificación</label>
+                          <div className="grid grid-cols-2 gap-4">
+                            {[
+                              { id: 'scale', label: 'Escalado Visual (Scale)', desc: 'Efecto de zoom fluido en 2D' },
+                              { id: 'size', label: 'Tamaño Físico (Size)', desc: 'Desplaza los elementos vecinos físicamente' }
+                            ].map(type => (
+                              <button
+                                key={type.id}
+                                onClick={() => updateSettings({ dockMagnificationType: type.id as any })}
+                                className={cn(
+                                  "p-4 rounded-xl border-2 transition-all font-bold text-left text-sm flex flex-col justify-between h-20",
+                                  settings.dockMagnificationType === type.id
+                                    ? "bg-indigo-600 border-indigo-600 text-white"
+                                    : "bg-white dark:bg-neutral-800 border-transparent text-neutral-600 dark:text-neutral-400 hover:border-indigo-200"
+                                )}
+                              >
+                                <span>{type.label}</span>
+                                <span className={cn("text-[10px] font-normal", settings.dockMagnificationType === type.id ? "text-indigo-100" : "text-neutral-400")}>
+                                  {type.desc}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
 

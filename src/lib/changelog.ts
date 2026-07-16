@@ -11,6 +11,96 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.9.0",
+    date: new Date().toISOString(),
+    changes: [
+      "Persistencia de Caché Multitestaña en Firestore: Migración de la persistencia offline de una sola pestaña a la configuración moderna de caché persistente multi-pestaña (persistentLocalCache con persistentMultipleTabManager). Esto acelera drásticamente la velocidad de carga de la aplicación y previene errores y advertencias de 'failed-precondition' cuando múltiples pestañas del sistema están abiertas simultáneamente.",
+      "Fragmentación Manual y Optimización de Carga (Vite / Rollup): Implementación de segmentación inteligente de dependencias pesadas (manualChunks) para separar módulos de Firebase, Lucide-React, Recharts y D3. Esto reduce el tamaño del bundle inicial descargado por el navegador, optimizando el rendimiento de la PWA sobre conexiones móviles lentas.",
+      "Estructuración de Manejo de Errores Robustos: Preparación de la arquitectura de datos para diagnósticos óptimos ante posibles restricciones de permisos o límites de cuota diaria en el ecosistema de base de datos."
+    ],
+  },
+  {
+    version: "4.8.3",
+    date: new Date().toISOString(),
+    changes: [
+      "Estandarización Absoluta del Dock Flotante: Unificación de todos los estilos de interfaz ('classic', 'glass', 'liquid-glass') bajo un diseño de dock flotante centrado y desacoplado, adaptándose fluidamente a cualquier posición (arriba, abajo, izquierda, derecha).",
+      "Despliegue Dinámico de Submenús: Corrección del error que impedía visualizar los módulos y submódulos interactivos en las interfaces clásico y glassmorfismo al eliminar las restricciones de desborde y solapamientos.",
+      "Ajuste de Espaciado del Canvas Principal: Corrección del padding de seguridad en el panel de contenidos de forma universal para evitar superposiciones con el dock en todas las configuraciones."
+    ],
+  },
+  {
+    version: "4.8.2",
+    date: new Date().toISOString(),
+    changes: [
+      "Estandarización del Dock Flotante: Unificación de la estructura de dock flotante encapsulado para Glassmorfismo ('glass') y Liquid Glass ('liquid-glass'), corrigiendo el error que provocaba que se renderizara la barra rígida clásica.",
+      "Solución de Posicionamiento de Submenús: Se resolvió el error de navegación donde las opciones secundarias o submódulos no se visualizaban o se solapaban al expandir el menú colapsable, permitiendo una apertura flotante perfecta en coordenadas dinámicas.",
+      "Aislamiento de Paddings Clásicos: Restricción del padding de contención del contenido principal en el layout únicamente cuando el dock flotante está activo, previniendo el espacio vacío artificial de 128px al utilizar el estilo de barra rígida Sólido Clásico."
+    ],
+  },
+  {
+    version: "4.8.1",
+    date: new Date().toISOString(),
+    changes: [
+      "Optimización Antiflicker en Liquid Glass: Implementación de contención de desborde elástico (overscroll-y-none) y promoción de capas con aceleración por hardware (transform-gpu, translate3d, will-change: transform) en los paneles acrílicos, eliminando por completo los parpadeos visuales al alcanzar los límites de scroll en el Dashboard.",
+      "Ubicación Dinámica del Cuadro de Confirmación: Corrección del solapamiento del cuadro de confirmación de la posición de la barra de navegación; ahora, cuando el Dock está posicionado abajo (bottom), la confirmación se desplaza elegantemente a la parte superior (top-6) para no obstruir los botones de guardar cambios."
+    ],
+  },
+  {
+    version: "4.8.0",
+    date: new Date().toISOString(),
+    changes: [
+      "Unificación de Barra de Navegación (Dock): Estandarización de toda la plataforma en una barra de navegación tipo Dock flotante unificada para los tres estilos de interfaz (Sólido Moderno, Glassmorfismo y Liquid Glass).",
+      "Eliminación de Márgenes de Panel Sólido: Corrección estética para evitar que la barra lateral ocupe márgenes rígidos que bloqueaban la pantalla, abriendo todo el lienzo visual en una estructura integrada.",
+      "Interacciones Fluidas: Soporte reactivo en el Dock que optimiza las burbujas flotantes de submenús, el efecto de magnificación macOS-style opcional, y transiciones dinámicas según el tema claro u oscuro."
+    ],
+  },
+  {
+    version: "4.7.4",
+    date: new Date().toISOString(),
+    changes: [
+      "Optimización de Rendimiento GPU: Conversión de las animaciones de los globos de fondo a transformaciones 3D aceleradas por hardware (translate3d), aliviando la carga del CPU.",
+      "Aislamiento de Capas de Renderizado: Implementación de la propiedad CSS de contención visual (contain: paint) y promoción de capa en el contenedor principal de fondos, previniendo re-cálculos de píxeles al hacer scroll.",
+      "Fluidez en Desplazamiento: Eliminación absoluta de parpadeos y retrasos visuales durante la navegación e interacciones en toda la aplicación, logrando un rendimiento óptimo idéntico al Glassmorfismo."
+    ],
+  },
+  {
+    version: "4.7.3",
+    date: new Date().toISOString(),
+    changes: [
+      "Ajuste y Sincronización de Fondos: Reversión de los cambios en el fondo de Glassmorfismo a su estado original óptimo y estático con su sutil pulso clásico.",
+      "Vibración en Liquid Glass: Mantenimiento y perfeccionamiento de la paleta cromática profunda y la animación fluida en el fondo de Liquid Glass, garantizando una refracción acrílica de máxima fidelidad.",
+      "Estabilidad Visual: Optimización de las transiciones de fondo al alternar entre ambos estilos de interfaz."
+    ],
+  },
+  {
+    version: "4.7.2",
+    date: new Date().toISOString(),
+    changes: [
+      "Fondos Orgánicos Líquidos Avanzados: Integración de la paleta de colores profundos y vibrantes de Glassmorphism en el modo 'Liquid Glass' para maximizar su refracción translúcida y textura acrílica.",
+      "Animaciones de Deriva Fluida (Fluid Drift): Creación de fotogramas de animación lenta en CSS para mover, pulsar y rotar de manera orgánica las esferas de color desenfocadas bajo los paneles de cristal.",
+      "Optimización del Modo Oscuro: Ajuste de tonos, saturaciones de color y un 'wash overlay' en el modo oscuro para garantizar contrastes impecables, profundidad visual y un look premium consistente."
+    ],
+  },
+  {
+    version: "4.7.1",
+    date: new Date().toISOString(),
+    changes: [
+      "Auto-colapso de Submenús en Liquid Glass: Corrección de comportamiento para garantizar que, al hacer clic en un módulo del dock, se contraigan y cierren automáticamente todos los demás submenús abiertos de manera elegante.",
+      "Cierre de Submenús en Navegación Directa: Asegura que al hacer clic en enlaces directos sin submenús (como Configuración o Dashboard) o al cerrar sesión, se limpien todos los submenús activos del Dock.",
+      "Animaciones de Cierre Premium: Implementación de transiciones de escala y opacidad con Framer Motion (<AnimatePresence>) para que los submenús se contraigan de forma fluida hacia el botón del que brotaron."
+    ],
+  },
+  {
+    version: "4.7.0",
+    date: new Date().toISOString(),
+    changes: [
+      "Efecto de Magnificación del Dock: Implementación del efecto de magnificación de iconos al pasar el cursor (hover zoom) para la interfaz de 'Liquid Glass', configurable por el usuario.",
+      "Configuración de Proximidad: Soporte para aumentar el tamaño de los iconos vecinos adyacentes para una fluidez interactiva premium idéntica a macOS.",
+      "Modos de Magnificación: Inclusión de dos algoritmos de zoom ('Escala Visual' y 'Ajuste de Tamaño Físico') completamente controlables desde el apartado de Ajustes.",
+      "Diseño Líquido Adaptativo: Optimización de los menús flotantes, globos de submenús con Glassmorphism translúcido (20px blur) y tooltips flotantes inteligentes para modos de escritorio y móviles."
+    ],
+  },
+  {
     version: "4.6.7",
     date: new Date().toISOString(),
     changes: [

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, Navigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { 
@@ -35,11 +36,213 @@ import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/fire
 import { CURRENT_VERSION } from '../lib/changelog';
 import { isSuperAdminEmail, cn } from '../lib/utils';
 
+interface DockItemProps {
+  item: any;
+  index: number;
+  hoveredIndex: number | null;
+  setHoveredIndex: (idx: number | null) => void;
+  settings: any;
+  isVertical: boolean;
+  pos: string;
+  location: any;
+  openMenus: any;
+  toggleMenu: (name: string) => void;
+  setOpenMenus: any;
+  isMobile?: boolean;
+}
+
+const DockItem: React.FC<DockItemProps> = ({
+  item,
+  index,
+  hoveredIndex,
+  setHoveredIndex,
+  settings,
+  isVertical,
+  pos,
+  location,
+  openMenus,
+  toggleMenu,
+  setOpenMenus,
+  isMobile = false
+}) => {
+  const hasSubItems = item.subItems && item.subItems.length > 0;
+  const isActive = item.isAvatar 
+    ? location.pathname === '/settings'
+    : item.href 
+    ? location.pathname === item.href || location.pathname.startsWith(item.href) 
+    : (item.subItems ? item.subItems.some((sub: any) => location.pathname === sub.href || location.pathname.startsWith(sub.href)) : false);
+
+  const isClassicStyle = settings.uiStyle === 'classic' || !settings.uiStyle;
+  const isGlassStyle = settings.uiStyle === 'glass';
+  const isLiquidGlassStyle = settings.uiStyle === 'liquid-glass';
+
+  // Hover Proximity Scale Calculation
+  let scale = 1.0;
+  if (settings.dockMagnification !== false && hoveredIndex !== null) {
+    if (hoveredIndex === index) {
+      scale = 1.30;
+    } else if (settings.dockProximity !== false && (hoveredIndex === index - 1 || hoveredIndex === index + 1)) {
+      scale = 1.15;
+    }
+  }
+
+  const isSizeMagnification = settings.dockMagnificationType === 'size';
+  
+  const baseSize = isMobile ? 44 : 52;
+  const currentSize = isSizeMagnification ? baseSize * scale : baseSize;
+
+  const itemStyle: React.CSSProperties = {
+    transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+    ...(isSizeMagnification 
+      ? { width: `${currentSize}px`, height: `${currentSize}px` } 
+      : { transform: `scale(${scale})`, transformOrigin: isVertical ? (pos === 'right' ? 'center right' : 'center left') : 'bottom center' }
+    ),
+  };
+
+  const IconComponent = item.icon;
+
+  const buttonStyleClass = isActive 
+    ? (isClassicStyle
+        ? "bg-indigo-600 dark:bg-indigo-500 text-white border-indigo-700 dark:border-indigo-400 shadow-md shadow-indigo-100/10"
+        : "bg-indigo-100/50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-800"
+      )
+    : (isClassicStyle
+        ? "bg-white dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 border-neutral-200 dark:border-neutral-700 shadow-sm"
+        : isGlassStyle
+        ? "bg-white/60 dark:bg-neutral-800/50 hover:bg-white/80 dark:hover:bg-neutral-700/80 border-white/40 dark:border-white/5"
+        : "bg-white/40 dark:bg-neutral-800/40 hover:bg-white/75 dark:hover:bg-neutral-700/60 border-white/30 dark:border-white/5"
+      );
+
+  const content = (
+    <div className="relative h-full w-full flex items-center justify-center">
+      {item.isAvatar ? (
+        <div className="w-10 h-10 overflow-hidden rounded-full">
+          <IconComponent />
+        </div>
+      ) : (
+        <IconComponent className={cn("w-6 h-6 transition-transform duration-300", isActive ? (isClassicStyle ? "text-white scale-110" : "text-indigo-600 dark:text-indigo-400 scale-110") : "text-neutral-600 dark:text-neutral-300")} />
+      )}
+      
+      {/* Indicator for active state (small dot like macOS) */}
+      {isActive && (
+        <span className={cn(
+          "absolute rounded-full transition-all duration-300",
+          isClassicStyle ? "bg-white w-1.5 h-1.5" : "bg-indigo-600 dark:bg-indigo-400 w-1.5 h-1.5",
+          isVertical
+            ? (pos === 'right' ? "right-1.5 top-1/2 -translate-y-1/2" : "left-1.5 top-1/2 -translate-y-1/2")
+            : "bottom-1.5 left-1/2 -translate-x-1/2"
+        )} />
+      )}
+    </div>
+  );
+
+  return (
+    <div
+      onMouseEnter={() => setHoveredIndex(index)}
+      onMouseLeave={() => setHoveredIndex(null)}
+      className="relative group flex items-center justify-center cursor-pointer select-none"
+      style={itemStyle}
+    >
+      {/* Tooltip */}
+      <div 
+        className={cn(
+          "absolute pointer-events-none opacity-0 group-hover:opacity-100 transition-all duration-200 z-50 px-2.5 py-1.5 text-[11px] font-bold text-white bg-neutral-900/85 dark:bg-black/90 backdrop-blur-md rounded-lg shadow-xl border border-white/10 whitespace-nowrap",
+          isVertical
+            ? (pos === 'right' ? "right-full mr-4 top-1/2 -translate-y-1/2 group-hover:-translate-x-1" : "left-full ml-4 top-1/2 -translate-y-1/2 group-hover:translate-x-1")
+            : (pos === 'top' ? "top-full mt-4 left-1/2 -translate-x-1/2 group-hover:translate-y-1" : "bottom-full mb-4 left-1/2 -translate-x-1/2 group-hover:-translate-y-1")
+        )}
+      >
+        {item.name}
+      </div>
+
+      {/* Button / Link wrapper */}
+      {item.isLogout ? (
+        <button
+          onClick={(e) => {
+            setOpenMenus({});
+            item.onClick?.(e);
+          }}
+          className={cn(
+            "h-full w-full flex items-center justify-center rounded-2xl border transition-all duration-300",
+            buttonStyleClass
+          )}
+        >
+          {content}
+        </button>
+      ) : hasSubItems ? (
+        <div className="h-full w-full relative">
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleMenu(item.name); }}
+            className={cn(
+              "h-full w-full flex items-center justify-center rounded-2xl border transition-all duration-300",
+              buttonStyleClass
+            )}
+          >
+            {content}
+          </button>
+
+          {/* Subitems Floating Glass Balloon with Elegant Expansion/Contraction */}
+          <AnimatePresence>
+            {openMenus[item.name] && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.85 }}
+                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                className={cn(
+                  "absolute bg-white/95 dark:bg-neutral-900/95 backdrop-blur-2xl border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-xl p-2.5 z-[100] space-y-1 w-48",
+                  isVertical
+                    ? (pos === 'right' ? "right-20 top-1/2 -translate-y-1/2 mr-2 origin-right" : "left-20 top-1/2 -translate-y-1/2 ml-2 origin-left")
+                    : (pos === 'top' ? "top-20 left-1/2 -translate-x-1/2 mt-2 origin-top" : "bottom-20 left-1/2 -translate-x-1/2 mb-2 origin-bottom")
+                )}
+              >
+                {item.subItems.map((subItem: any) => {
+                  const isSubActive = location.pathname === subItem.href || location.pathname.startsWith(subItem.href);
+                  return (
+                    <Link
+                      key={subItem.name}
+                      to={subItem.href}
+                      onClick={() => {
+                        setOpenMenus({});
+                      }}
+                      className={cn(
+                        "flex items-center px-3 py-2 text-xs font-bold rounded-lg transition-all",
+                        isSubActive
+                          ? "bg-indigo-600 dark:bg-indigo-500 text-white"
+                          : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800/50"
+                      )}
+                    >
+                      <subItem.icon className="w-3.5 h-3.5 mr-2.5" />
+                      {subItem.name}
+                    </Link>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      ) : (
+        <Link
+          to={item.href!}
+          onClick={() => setOpenMenus({})}
+          className={cn(
+            "h-full w-full flex items-center justify-center rounded-2xl border transition-all duration-300",
+            buttonStyleClass
+          )}
+        >
+          {content}
+        </Link>
+      )}
+    </div>
+  );
+};
+
 export default function Layout() {
   const { settings } = useSettings();
   const { user, profile, loading, logout, isAdmin, impersonatedUser, impersonateUser, originalUser } = useAuth();
   const location = useLocation();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
     'Finanzas': false,
     'Comercio': false,
@@ -64,7 +267,10 @@ export default function Layout() {
 
   const toggleMenu = (menuName: string) => {
     setIsSidebarCollapsed(false);
-    setOpenMenus(prev => ({ ...prev, [menuName]: !prev[menuName] }));
+    setOpenMenus(prev => {
+      const isCurrentlyOpen = !!prev[menuName];
+      return { [menuName]: !isCurrentlyOpen };
+    });
   };
 
   const handleSidebarClick = () => {
@@ -140,7 +346,10 @@ export default function Layout() {
     return () => { active = false; };
   }, [user, profile]);
 
-  const isGlass = settings.uiStyle === 'glass' || settings.uiStyle === 'liquid-glass';
+  const isClassicStyle = !settings.uiStyle || settings.uiStyle === 'classic';
+  const isGlassStyle = settings.uiStyle === 'glass';
+  const isLiquidGlassStyle = settings.uiStyle === 'liquid-glass';
+  const isGlass = isGlassStyle || isLiquidGlassStyle;
   const pos = settings.menuPosition || 'left';
   const isHorizontal = pos === 'top' || pos === 'bottom';
   useEffect(() => {
@@ -245,7 +454,7 @@ export default function Layout() {
     return subItems?.some(item => location.pathname === item.href || location.pathname.startsWith(item.href)) || false;
   };
 
-
+  const isLiquidGlass = settings.uiStyle === 'liquid-glass';
 
   // Base layout styles depending on glass/classic
   const containerClass = cn(
@@ -254,44 +463,61 @@ export default function Layout() {
     pos === 'top' ? "md:flex-col" : 
     pos === 'bottom' ? "md:flex-col-reverse" : 
     "md:flex-row",
-    (isGlass || settings.uiStyle === 'liquid-glass')
+    isGlass
       ? "bg-[#f0f4f8] dark:bg-[#0a0a0a] relative overflow-hidden" 
       : "bg-neutral-50 dark:bg-neutral-950"
   );
 
   const sidebarClass = cn(
-    "hidden md:flex sticky z-40 transition-all duration-300",
-    isHorizontal ? "w-full h-auto flex-row border-b overflow-x-auto items-center" : `flex-col h-screen ${pos === 'right' ? 'border-l' : 'border-r'}`,
-    isHorizontal ? "" : (isSidebarCollapsed ? "w-20" : "w-64"),
-    isGlass 
-      ? "bg-white/70 dark:bg-neutral-900/70 backdrop-blur-xl border-white/20 dark:border-neutral-800/30" 
-      : "bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800"
+    "hidden md:flex transition-all duration-300",
+    pos === 'bottom'
+      ? "fixed bottom-6 left-1/2 -translate-x-1/2 w-auto h-20 px-6 rounded-[2rem] border flex-row items-center justify-center z-50 gap-4"
+      : pos === 'top'
+      ? "fixed top-6 left-1/2 -translate-x-1/2 w-auto h-20 px-6 rounded-[2rem] border flex-row items-center justify-center z-50 gap-4"
+      : pos === 'left'
+      ? "fixed left-6 top-1/2 -translate-y-1/2 w-20 h-auto py-6 rounded-[2rem] border flex-col items-center justify-center z-50 gap-4"
+      : "fixed right-6 top-1/2 -translate-y-1/2 w-20 h-auto py-6 rounded-[2rem] border flex-col items-center justify-center z-50 gap-4",
+    isClassicStyle
+      ? "bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800 shadow-[0_15px_35px_rgba(0,0,0,0.1)] dark:shadow-[0_15px_35px_rgba(0,0,0,0.4)]"
+      : isGlassStyle
+      ? "bg-white/60 dark:bg-neutral-900/40 backdrop-blur-[20px] border-white/40 dark:border-white/10 shadow-[0_15px_35px_rgba(0,0,0,0.15)] dark:shadow-[0_15px_35px_rgba(0,0,0,0.4)]"
+      : "bg-white/20 dark:bg-neutral-900/25 backdrop-blur-[20px] border-white/30 dark:border-white/10 shadow-[0_15px_35px_rgba(0,0,0,0.15)] dark:shadow-[0_15px_35px_rgba(0,0,0,0.4)]"
   );
 
   return (
     <div className={containerClass}>
       <UpdatesNotification />
       <PWAPrompt />
-      {isGlass && settings.uiStyle !== 'liquid-glass' && (
-        <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+      {isGlassStyle && (
+        <div 
+          className="fixed inset-0 overflow-hidden pointer-events-none z-0"
+          style={{ contain: 'paint', transform: 'translate3d(0, 0, 0)' }}
+        >
           <div className="absolute inset-0 dark:hidden bg-gradient-to-br from-[#e0e7ff] via-[#fae8ff] to-[#f3e8ff] opacity-60" />
           <div className="absolute -top-[10%] -left-[10%] w-[50%] h-[50%] rounded-full bg-gradient-to-r from-blue-500/40 to-cyan-400/40 dark:from-orange-500/20 dark:to-amber-500/20 blur-[120px] mix-blend-multiply dark:mix-blend-screen animate-pulse duration-1000" />
           <div className="absolute top-[20%] -right-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-bl from-pink-500/40 to-purple-500/40 dark:from-red-600/20 dark:to-orange-500/20 blur-[150px] mix-blend-multiply dark:mix-blend-screen" />
           <div className="absolute -bottom-[10%] left-[20%] w-[50%] h-[50%] rounded-full bg-gradient-to-tr from-yellow-400/40 to-pink-500/40 dark:from-indigo-600/20 dark:to-purple-900/20 blur-[120px] mix-blend-multiply dark:mix-blend-screen" />
         </div>
       )}
-      {settings.uiStyle === 'liquid-glass' && (
-        <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden transition-opacity duration-1000">
-          {(settings.liquidBackgroundType || 'gradient') === 'gradient' && (
+      {isLiquidGlassStyle && (
+        <div 
+          className="fixed inset-0 pointer-events-none z-0 overflow-hidden transition-opacity duration-1000"
+          style={{ contain: 'paint', transform: 'translate3d(0, 0, 0)' }}
+        >
+          {((settings.liquidBackgroundType || 'gradient') === 'gradient' || settings.liquidBackgroundType === 'animated') && (
             <>
-              <div className="absolute inset-0 dark:hidden bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 opacity-80" />
-              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/30 via-purple-500/30 to-pink-500/30 dark:from-indigo-900/60 dark:via-purple-900/60 dark:to-pink-900/60 blur-3xl saturate-200 opacity-80 dark:opacity-60 animate-in fade-in" />
-              <div className="absolute top-[10%] left-[10%] w-[40%] h-[40%] rounded-full bg-blue-400/30 dark:bg-blue-600/30 blur-[100px] animate-pulse" />
-              <div className="absolute bottom-[10%] right-[10%] w-[50%] h-[50%] rounded-full bg-pink-400/30 dark:bg-pink-600/30 blur-[120px] animate-pulse delay-1000" />
+              {/* Base background */}
+              <div className="absolute inset-0 dark:hidden bg-gradient-to-br from-[#e0e7ff] via-[#fae8ff] to-[#f3e8ff] opacity-80" />
+              <div className="absolute inset-0 hidden dark:block bg-gradient-to-br from-[#0a0a0c] via-[#111115] to-[#09090b] opacity-100" />
+
+              {/* Sub-bg color wash for saturating colors under dark mode */}
+              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 dark:from-indigo-950/20 dark:via-purple-950/20 dark:to-pink-950/20 blur-3xl saturate-200 opacity-60" />
+              
+              {/* Floating vibrant liquid-glass blobs with exact deep colors as Glassmorphism */}
+              <div className="absolute -top-[10%] -left-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-r from-blue-500/45 to-cyan-400/45 dark:from-orange-500/25 dark:to-amber-500/25 blur-[120px] mix-blend-multiply dark:mix-blend-screen animate-blob-one" />
+              <div className="absolute top-[20%] -right-[10%] w-[70%] h-[70%] rounded-full bg-gradient-to-bl from-pink-500/45 to-purple-500/45 dark:from-red-600/25 dark:to-orange-500/25 blur-[150px] mix-blend-multiply dark:mix-blend-screen animate-blob-two" />
+              <div className="absolute -bottom-[10%] left-[20%] w-[60%] h-[60%] rounded-full bg-gradient-to-tr from-yellow-400/45 to-pink-500/45 dark:from-indigo-600/25 dark:to-purple-900/25 blur-[120px] mix-blend-multiply dark:mix-blend-screen animate-blob-three" />
             </>
-          )}
-          {settings.liquidBackgroundType === 'animated' && (
-             <div className="absolute inset-0 bg-[linear-gradient(45deg,#ff000022,#00ff0022,#0000ff22)] bg-[length:400%_400%] animate-pulse blur-2xl saturate-150" />
           )}
           {settings.liquidBackgroundType === 'custom' && settings.liquidBackgroundValue && (
             <div 
@@ -304,152 +530,83 @@ export default function Layout() {
         </div>
       )}
 
-      {/* Sidebar */}
+      {/* Floating Unified Desktop Dock */}
       <div 
         ref={sidebarRef}
         className={sidebarClass}
-        onClick={handleSidebarClick}
+        onMouseLeave={() => setHoveredIndex(null)}
       >
-        <div className={cn("flex items-center px-4 border-neutral-200 dark:border-neutral-800/50", isHorizontal ? "h-16 border-r flex-shrink-0" : "h-20 border-b")}>
-          <div className="h-10 w-10 min-w-[40px] bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-xl flex items-center justify-center mr-3 shadow-md mx-auto md:mx-0">
-            <img src="/logo.svg" alt="Control 360°" className="h-7 w-7" referrerPolicy="no-referrer" />
+        {/* Logo item in dock */}
+        <div className={cn(
+          "relative group flex items-center justify-center h-12 w-12 rounded-2xl border transition-all duration-300",
+          isClassicStyle
+            ? "bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 shadow-sm"
+            : "bg-white/20 dark:bg-black/20 border border-white/20 backdrop-blur-sm shadow-sm"
+        )}>
+          <img src="/logo.svg" alt="Control 360°" className="h-7 w-7 select-none" referrerPolicy="no-referrer" />
+          <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 px-2.5 py-1 text-[11px] font-bold text-white bg-neutral-900/85 dark:bg-black/90 rounded-lg opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap z-50 border border-white/10">
+            Control 360°
           </div>
-          {!isSidebarCollapsed && (
-            <div className="flex flex-col truncate animate-in fade-in duration-300">
-              <span className="text-lg font-bold text-neutral-900 dark:text-neutral-50 truncate">
-                Control 360°
-              </span>
-              <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
-                {profile?.role === 'SUPERADMIN' ? 'Admin Panel' : 'Plataforma'}
-              </span>
-            </div>
-          )}
         </div>
 
-        <nav className={cn("flex-1 p-3 custom-scrollbar", isHorizontal ? "flex flex-row overflow-x-auto space-x-1 items-center" : "overflow-y-auto space-y-1")}>
-          {navigation.map((item) => {
-            const hasSubItems = item.subItems && item.subItems.length > 0;
-            const isActive = item.href ? location.pathname === item.href || location.pathname.startsWith(item.href) : isSubItemActive(item.subItems);
-            
-            if (!hasSubItems) {
-              return (
-                <Link
-                  key={item.name}
-                  to={item.href!}
-                  onClick={() => window.innerWidth < 768 && setIsSidebarCollapsed(true)}
-                  className={cn(
-                    "flex items-center px-3 py-3 text-sm font-medium rounded-xl transition-all duration-200 group relative",
-                    isActive
-                      ? "bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 shadow-sm"
-                      : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800/50"
-                  )}
-                >
-                  <item.icon className={cn("w-5 h-5 flex-shrink-0", !isSidebarCollapsed && "mr-3", isActive && "scale-110 transition-transform")} />
-                  {!isSidebarCollapsed && <span className="animate-in fade-in duration-300">{item.name}</span>}
-                  
-                  {/* Tooltip for collapsed state */}
-                  {isSidebarCollapsed && (
-                    <div className="absolute left-full ml-2 px-2 py-1 bg-neutral-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">
-                      {item.name}
-                    </div>
-                  )}
-                </Link>
-              );
+        {/* Separator */}
+        <div className={cn(
+          isClassicStyle ? "bg-neutral-200 dark:bg-neutral-700" : "bg-white/20 dark:bg-white/10", 
+          isHorizontal ? "w-[1px] h-8 mx-1" : "w-8 h-[1px] my-1"
+        )} />
+
+        {/* Navigation Items with Magnification */}
+        <div className={cn("flex items-center justify-center gap-3", isHorizontal ? "flex-row" : "flex-col")}>
+          {[
+            ...navigation,
+            {
+              name: `${profile?.name || 'Usuario'} (${user.email || ''})`,
+              icon: () => (
+                <div className={cn(
+                  "h-full w-full rounded-full flex items-center justify-center font-bold text-sm overflow-hidden select-none border",
+                  isClassicStyle
+                    ? "bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800"
+                    : "bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800"
+                )}>
+                  {profile?.name?.charAt(0) || user.email?.charAt(0)}
+                </div>
+              ),
+              isAvatar: true,
+              href: '/settings',
+            },
+            {
+              name: 'Cerrar Sesión',
+              icon: LogOut,
+              isLogout: true,
+              onClick: logout,
             }
-
-            return (
-              <div key={item.name} className="space-y-1 relative group">
-                <button
-                  onClick={(e) => { e.stopPropagation(); toggleMenu(item.name); }}
-                  className={cn(
-                    "w-full flex items-center px-3 py-3 text-sm font-medium rounded-xl transition-all duration-200",
-                    isActive && !openMenus[item.name]
-                      ? "bg-indigo-50/50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300"
-                      : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800/50",
-                    openMenus[item.name] && "text-indigo-700 dark:text-indigo-300 bg-indigo-50/30 dark:bg-indigo-900/10"
-                  )}
-                >
-                  <item.icon className={cn("w-5 h-5 flex-shrink-0", !isSidebarCollapsed && "mr-3", isActive && "scale-110 transition-transform")} />
-                  {!isSidebarCollapsed && (
-                    <>
-                      <span className="flex-1 text-left animate-in fade-in duration-300">{item.name}</span>
-                      <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", openMenus[item.name] && "transform rotate-180")} />
-                    </>
-                  )}
-                </button>
-                
-                {/* Tooltip for collapsed state */}
-                {isSidebarCollapsed && (
-                  <div className="absolute left-full ml-2 px-2 py-1 bg-neutral-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">
-                    {item.name}
-                  </div>
-                )}
-
-                {openMenus[item.name] && !isSidebarCollapsed && (
-                  <div className={cn("pr-2 py-2 animate-in slide-in-from-top-2 duration-200", isHorizontal ? "absolute top-full left-0 mt-1 w-48 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl shadow-xl z-50 p-2 space-y-1" : "pl-10 space-y-1")}>
-                    {item.subItems!.map(subItem => {
-                      const isSubActive = location.pathname === subItem.href || location.pathname.startsWith(subItem.href);
-                      return (
-                        <Link
-                          key={subItem.name}
-                          to={subItem.href}
-                          className={cn(
-                            "flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-all",
-                            isSubActive
-                              ? "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300"
-                              : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800/50"
-                          )}
-                        >
-                          <subItem.icon className="w-4 h-4 mr-3" />
-                          {subItem.name}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </nav>
-
-        <div className="p-4 border-t border-neutral-200 dark:border-neutral-800/50 space-y-4">
-          <div className="flex items-center p-2 rounded-xl bg-neutral-100/50 dark:bg-neutral-800/30">
-            <div className="h-10 w-10 min-w-[40px] rounded-xl bg-indigo-100 dark:bg-indigo-900/60 flex items-center justify-center text-indigo-700 dark:text-indigo-300 font-bold shadow-inner">
-              {profile?.name?.charAt(0) || user.email?.charAt(0)}
-            </div>
-            {!isSidebarCollapsed && (
-              <div className="ml-3 truncate animate-in fade-in duration-300">
-                <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">{profile?.name}</p>
-                <p className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate tracking-tight">{user.email}</p>
-              </div>
-            )}
-          </div>
-          
-          <button
-            onClick={logout}
-            className={cn(
-              "flex items-center px-4 py-3 text-sm font-medium text-red-600 dark:text-red-400 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/30 transition-all duration-200",
-              isSidebarCollapsed ? "justify-center w-full" : "w-full"
-            )}
-          >
-            <LogOut className={cn("h-5 w-5", !isSidebarCollapsed && "mr-3")} />
-            {!isSidebarCollapsed && <span>Cerrar Sesión</span>}
-          </button>
-          
-          {!isSidebarCollapsed && (
-            <div className="pt-2 animate-in fade-in duration-300">
-              <p className="text-[9px] text-neutral-400 dark:text-neutral-600 font-mono text-center tracking-widest uppercase">Control 360° v{CURRENT_VERSION}</p>
-            </div>
-          )}
+          ].map((item, index) => (
+            <DockItem
+              key={item.name}
+              item={item}
+              index={index}
+              hoveredIndex={hoveredIndex}
+              setHoveredIndex={setHoveredIndex}
+              settings={settings}
+              isVertical={!isHorizontal}
+              pos={pos}
+              location={location}
+              openMenus={openMenus}
+              toggleMenu={toggleMenu}
+              setOpenMenus={setOpenMenus}
+            />
+          ))}
         </div>
       </div>
 
       {/* Mobile top bar */}
       <div className={cn(
-        "md:hidden flex items-center justify-between p-4 border-b sticky top-0 z-50 transition-colors",
-        isGlass 
-          ? "bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md border-neutral-200/50 dark:border-neutral-800/50" 
-          : "bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800"
+        "md:hidden flex items-center justify-between p-4 border-b sticky top-0 z-50 transition-all duration-300",
+        isClassicStyle
+          ? "bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800"
+          : isGlassStyle
+          ? "bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md border-neutral-200/50 dark:border-neutral-800/50"
+          : "bg-white/40 dark:bg-neutral-900/40 backdrop-blur-md border-white/20 dark:border-white/10"
       )}>
         <div className="flex items-center">
           <div className="h-8 w-8 bg-indigo-600 dark:bg-indigo-500 rounded-lg flex items-center justify-center mr-2">
@@ -465,7 +622,13 @@ export default function Layout() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col h-screen overflow-y-auto overflow-x-hidden pb-20 md:pb-0 relative z-10">
+      <div className={cn(
+        "flex-1 flex flex-col h-screen overflow-y-auto overflow-x-hidden overscroll-y-none transform-gpu relative z-10 transition-all duration-300 pb-24 md:pb-0",
+        pos === 'left' && "md:pl-32",
+        pos === 'right' && "md:pr-32",
+        pos === 'top' && "pt-32",
+        pos === 'bottom' && "pb-32"
+      )}>
         {impersonatedUser && (
           <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 text-white font-semibold py-3.5 px-6 md:px-8 flex flex-col sm:flex-row justify-between items-center gap-3 shadow-md animate-in slide-in-from-top duration-500 sticky top-0 z-[100] border-b border-indigo-500/30">
             <div className="flex items-center gap-3">
@@ -490,7 +653,7 @@ export default function Layout() {
         
         <main className={cn(
           "relative z-10 flex-1 p-4 md:p-8 transition-colors duration-300",
-          !isGlass && "bg-neutral-50 dark:bg-neutral-950"
+          !isGlassStyle && !isLiquidGlassStyle && "bg-neutral-50 dark:bg-neutral-950"
         )}>
           <div className="max-w-7xl mx-auto">
             <Outlet />
@@ -498,68 +661,35 @@ export default function Layout() {
         </main>
       </div>
 
-      {/* Mobile bottom navigation */}
-      <div className={cn(
-        "md:hidden fixed bottom-0 left-0 right-0 border-t flex justify-around items-center h-16 px-2 z-50",
-        isGlass 
-          ? "bg-white/90 dark:bg-neutral-900/90 backdrop-blur-md border-neutral-200/50 dark:border-neutral-800/50"
-          : "bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800"
-      )}>
-        {navigation.map((item) => {
-          const hasSubItems = item.subItems && item.subItems.length > 0;
-          const isActive = item.href ? location.pathname === item.href : isSubItemActive(item.subItems);
-          
-          return hasSubItems ? (
-            <div key={item.name} className="relative flex-1 h-full">
-              <button
-                onClick={() => toggleMenu(item.name)}
-                className={`w-full flex flex-col items-center justify-center h-full rounded-xl transition-all ${
-                  isActive
-                    ? 'text-indigo-600 dark:text-indigo-400'
-                    : 'text-neutral-500 dark:text-neutral-400'
-                }`}
-              >
-                <item.icon className={`h-5 w-5 mb-1 ${isActive ? 'scale-110' : ''}`} />
-                <span className="text-[10px] font-bold uppercase tracking-tight">{item.name}</span>
-              </button>
-              {openMenus[item.name] && (
-                <div className="absolute bottom-16 left-1/2 -translate-x-1/2 w-48 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl shadow-xl flex flex-col p-2 gap-1 mb-2 animate-in slide-in-from-bottom-4">
-                  {item.subItems!.map(subItem => {
-                    const isSubActive = location.pathname === subItem.href || location.pathname.startsWith(subItem.href);
-                    return (
-                      <Link
-                        key={subItem.name}
-                        to={subItem.href}
-                        onClick={() => toggleMenu(item.name)}
-                        className={`flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-all ${
-                          isSubActive
-                            ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300'
-                            : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-                        }`}
-                      >
-                        <subItem.icon className="w-4 h-4 mr-3" />
-                        {subItem.name}
-                      </Link>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          ) : (
-            <Link
-              key={item.name}
-              to={item.href!}
-              className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition-all ${
-                isActive
-                  ? 'text-indigo-600 dark:text-indigo-400'
-                  : 'text-neutral-500 dark:text-neutral-400'
-              }`}
-            >
-              <item.icon className={`h-5 w-5 mb-1 ${isActive ? 'scale-110' : ''}`} />
-              <span className="text-[10px] font-bold uppercase tracking-tight">{item.name}</span>
-            </Link>
-          );
-        })}
+      {/* Floating Unified Mobile Bottom Navigation */}
+      <div 
+        className={cn(
+          "md:hidden fixed bottom-4 left-4 right-4 h-16 rounded-[1.5rem] border flex justify-around items-center px-4 z-50 gap-2 shadow-lg transition-all duration-300",
+          isClassicStyle
+            ? "bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800"
+            : isGlassStyle
+            ? "bg-white/70 dark:bg-neutral-900/60 backdrop-blur-[15px] border-white/30 dark:border-white/10"
+            : "bg-white/20 dark:bg-neutral-900/25 backdrop-blur-[20px] border-white/20 dark:border-white/10"
+        )}
+        onMouseLeave={() => setHoveredIndex(null)}
+      >
+        {navigation.map((item, index) => (
+          <DockItem
+            key={item.name}
+            item={item}
+            index={index}
+            hoveredIndex={hoveredIndex}
+            setHoveredIndex={setHoveredIndex}
+            settings={settings}
+            isVertical={false}
+            pos="bottom"
+            location={location}
+            openMenus={openMenus}
+            toggleMenu={toggleMenu}
+            setOpenMenus={setOpenMenus}
+            isMobile={true}
+          />
+        ))}
       </div>
 
       <a
