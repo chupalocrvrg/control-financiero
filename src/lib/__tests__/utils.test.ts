@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { calculateInstallments, formatCurrency, generateCheckNumber, isSuperAdminEmail, roundToTwo } from '../utils';
+import { calculateInstallments, formatCurrency, generateCheckNumber, isSuperAdminEmail, roundToTwo, SUPER_ADMIN_EMAILS } from '../utils';
 
 describe('calculateInstallments (Penny Drop Algorithm)', () => {
   it('should return empty list for 0 or negative installments', () => {
@@ -75,8 +75,10 @@ describe('isSuperAdminEmail', () => {
     expect(isSuperAdminEmail('')).toBe(false);
   });
 
-  it('should identify the hardcoded superadmin email', () => {
-    expect(isSuperAdminEmail('marcelogutama3eroa@gmail.com')).toBe(true);
+  it('should identify a superadmin email when present in SUPER_ADMIN_EMAILS list', () => {
+    SUPER_ADMIN_EMAILS.push('admin_test_temp@example.com');
+    expect(isSuperAdminEmail('admin_test_temp@example.com')).toBe(true);
+    SUPER_ADMIN_EMAILS.pop();
   });
 
   it('should return false for general non-admin emails', () => {

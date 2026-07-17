@@ -11,6 +11,13 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.12.1",
+    date: new Date().toISOString(),
+    changes: [
+      "Eliminación de Datos Hardcodeados y Remoción de Vulnerabilidades: Se removió por completo la dirección de correo personal hardcodeada en el código fuente de 4 archivos (server.ts, src/lib/utils.ts, y sus correspondientes tests unitarios), de forma que toda validación de cuentas de superadministrador dependa estrictamente de las variables de entorno configurables en el servidor (VITE_SUPER_ADMIN_EMAIL y VITE_SUPER_ADMIN_EMAILS). Asimismo, se quitó el riesgo latente de exposición de claves API borrando el define de GEMINI_API_KEY de vite.config.ts para que no se inyecte en el bundle de cliente. Finalmente, se reescribió security_spec.md para reflejar con absoluta precisión las reglas reales e integras desplegadas en firestore.rules, incluyendo procedimientos de validación real en el simulador de Firebase."
+    ],
+  },
+  {
     version: "4.12.0",
     date: new Date().toISOString(),
     changes: [

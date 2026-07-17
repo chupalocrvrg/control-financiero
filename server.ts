@@ -221,7 +221,6 @@ async function startServer() {
         ninetyDaysExpiry.setDate(ninetyDaysExpiry.getDate() + 90);
 
         const SUPER_ADMIN_EMAILS = [
-          'marcelogutama3eroa@gmail.com',
           process.env.VITE_SUPER_ADMIN_EMAIL,
           ...(process.env.VITE_SUPER_ADMIN_EMAILS || '').split(',').map((e: string) => e.trim())
         ].filter(Boolean) as string[];
@@ -263,7 +262,6 @@ async function startServer() {
         return res.status(201).json({ status: "created", profile: newUserProfile });
       } else {
         const SUPER_ADMIN_EMAILS = [
-          'marcelogutama3eroa@gmail.com',
           process.env.VITE_SUPER_ADMIN_EMAIL,
           ...(process.env.VITE_SUPER_ADMIN_EMAILS || '').split(',').map((e: string) => e.trim())
         ].filter(Boolean) as string[];
