@@ -11,6 +11,13 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.12.2",
+    date: new Date().toISOString(),
+    changes: [
+      "Depuración Completa de Referencias de Auditoría: Se eliminó el correo de superadministrador hardcodeado que aún persistía en la sección de variables de ejemplo del archivo README.md, garantizando que ninguna traza del correo personal del desarrollador quede expuesta en la documentación o código de control de versiones. Se ajustó el archivo de especificación de seguridad para enfocar el testing de seguridad en simulaciones reales del Firebase Rules Playground."
+    ],
+  },
+  {
     version: "4.12.1",
     date: new Date().toISOString(),
     changes: [
