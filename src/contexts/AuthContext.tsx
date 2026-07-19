@@ -68,14 +68,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           // Sync login or profile with full-stack backend
           try {
+            const idToken = await firebaseUser.getIdToken();
             await fetch('/api/users/profile', {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${idToken}`
               },
               body: JSON.stringify({
-                uid: firebaseUser.uid,
-                email: firebaseUser.email,
                 displayName: firebaseUser.displayName || '',
                 photoURL: firebaseUser.photoURL || ''
               })
@@ -237,10 +237,12 @@ useEffect(() => {
     }
     
     try {
+      const idToken = actualUser ? await actualUser.getIdToken() : '';
       const response = await fetch('/api/users/verify-pin', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
         },
         body: JSON.stringify({ uid: targetUid, pin })
       });
@@ -272,14 +274,22 @@ useEffect(() => {
     const activeUid = impersonatedUser ? impersonatedUser.uid : actualUser?.uid;
     if (!activeUid) return;
     
-    // Hash PIN if it is being updated
+    // Extract PIN if it is being updated
     const dataToSave = { ...data };
+    let pinToSave = '';
     if (dataToSave.pin) {
-      dataToSave.pin = await hashPin(dataToSave.pin, activeUid);
+      pinToSave = await hashPin(dataToSave.pin, activeUid);
+      dataToSave.pin = ''; // Erase plain/hashed PIN on main document
     }
     
     const docRef = doc(db, 'users', activeUid);
     try {
+      // 1. Write the hashed PIN securely to private subcollection if updated
+      if (pinToSave) {
+        const securityRef = doc(db, 'users', activeUid, 'private', 'security');
+        await setDoc(securityRef, { pin: pinToSave }, { merge: true });
+      }
+
       const docSnap = await getDoc(docRef);
       
       if (!docSnap.exists()) {
@@ -287,7 +297,7 @@ useEffect(() => {
         const newProfile = createDefaultProfile(activeEmail, dataToSave.name, {
           ruc: dataToSave.ruc || '',
           phone: dataToSave.phone || '',
-          pin: dataToSave.pin || '',
+          pin: '',
           createdAt: serverTimestamp(),
           lastPinEntry: serverTimestamp(),
           ...dataToSave

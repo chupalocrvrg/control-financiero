@@ -92,10 +92,12 @@ export default function SecurityGuard({ children }: { children: React.ReactNode 
     try {
       setLoading(true);
       
+      const idToken = user ? await user.getIdToken() : '';
       const response = await fetch('/api/users/reset-pin', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
         },
         body: JSON.stringify({
           uid: user?.uid,

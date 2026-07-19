@@ -174,11 +174,70 @@ async function startServer() {
   // Middleware to parse incoming JSON bodies
   app.use(express.json());
 
+  const SUPER_ADMIN_EMAILS = [
+    process.env.VITE_SUPER_ADMIN_EMAIL,
+    ...(process.env.VITE_SUPER_ADMIN_EMAILS || '').split(',').map((e: string) => e.trim())
+  ].filter(Boolean) as string[];
+
+  // Securely retrieves and verifies Firebase ID Token from request headers
+  async function getAuthenticatedUser(req: express.Request) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      throw new Error("No autenticado: falta el token de autorización.");
+    }
+    const token = authHeader.split("Bearer ")[1];
+    return await admin.auth().verifyIdToken(token);
+  }
+
+  // Verifies if the authenticated user has ADMIN or SUPERADMIN privileges
+  async function verifyAdminRole(decodedToken: admin.auth.DecodedIdToken) {
+    const email = decodedToken.email;
+    const uid = decodedToken.uid;
+
+    if (decodedToken.admin === true || decodedToken.role === 'SUPERADMIN' || decodedToken.role === 'ADMIN') {
+      return true;
+    }
+
+    if (email && SUPER_ADMIN_EMAILS.includes(email)) {
+      return true;
+    }
+
+    if (firestoreDb) {
+      try {
+        const userDoc = await firestoreDb.collection("users").doc(uid).get();
+        if (userDoc.exists) {
+          const role = userDoc.data()?.role;
+          if (role === 'SUPERADMIN' || role === 'ADMIN') {
+            return true;
+          }
+        }
+      } catch (err) {
+        console.error("Error checking user role in Firestore:", err);
+      }
+    }
+
+    return false;
+  }
+
+  // Diagnostics endpoint - secured with token validation and admin authorization
   app.get("/api/diagnostics/db", async (req, res) => {
     try {
+      let decodedToken;
+      try {
+        decodedToken = await getAuthenticatedUser(req);
+      } catch (authErr: any) {
+        return res.status(401).json({ error: authErr.message });
+      }
+
+      const isAdmin = await verifyAdminRole(decodedToken);
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Acceso denegado: se requieren permisos de administrador." });
+      }
+
       if (!firestoreDb) {
         return res.status(500).json({ error: "Firestore is not initialized" });
       }
+
       const empSnap = await firestoreDb.collection("employees").get();
       const employees = empSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
@@ -198,11 +257,20 @@ async function startServer() {
   });
 
   // 1. Endpoint api/users/profile - user persistence (upsert)
+  // Completely secured with verified Firebase ID token to prevent privilege escalation
   app.post("/api/users/profile", async (req, res) => {
     try {
-      const { uid, email, displayName } = req.body;
+      let decodedToken;
+      try {
+        decodedToken = await getAuthenticatedUser(req);
+      } catch (authErr: any) {
+        return res.status(401).json({ error: authErr.message });
+      }
+
+      const uid = decodedToken.uid;
+      const email = decodedToken.email;
       if (!uid || !email) {
-        return res.status(400).json({ error: "Missing required profile parameters ('uid' and 'email' are required)." });
+        return res.status(400).json({ error: "No se pudo extraer el UID o email de la autenticación." });
       }
 
       if (!firestoreDb) {
@@ -220,15 +288,10 @@ async function startServer() {
         const ninetyDaysExpiry = new Date();
         ninetyDaysExpiry.setDate(ninetyDaysExpiry.getDate() + 90);
 
-        const SUPER_ADMIN_EMAILS = [
-          process.env.VITE_SUPER_ADMIN_EMAIL,
-          ...(process.env.VITE_SUPER_ADMIN_EMAILS || '').split(',').map((e: string) => e.trim())
-        ].filter(Boolean) as string[];
-
         const isAdminEmail = SUPER_ADMIN_EMAILS.includes(email);
 
         const newUserProfile = {
-          name: displayName || email.split('@')[0],
+          name: decodedToken.name || email.split('@')[0],
           ruc: "",
           phone: "",
           email: email,
@@ -261,11 +324,6 @@ async function startServer() {
 
         return res.status(201).json({ status: "created", profile: newUserProfile });
       } else {
-        const SUPER_ADMIN_EMAILS = [
-          process.env.VITE_SUPER_ADMIN_EMAIL,
-          ...(process.env.VITE_SUPER_ADMIN_EMAILS || '').split(',').map((e: string) => e.trim())
-        ].filter(Boolean) as string[];
-
         const isAdminEmail = SUPER_ADMIN_EMAILS.includes(email);
 
         // Update only dynamic fields (avoid resetting custom fields like PIN)
@@ -333,11 +391,26 @@ async function startServer() {
   });
 
   // Endpoint to sync claims for any user (called by admin or automatically)
+  // Protected with verified token; only allows self-sync or administrative access
   app.post("/api/admin/sync-claims", async (req, res) => {
     try {
+      let decodedToken;
+      try {
+        decodedToken = await getAuthenticatedUser(req);
+      } catch (authErr: any) {
+        return res.status(401).json({ error: authErr.message });
+      }
+
       const { uid } = req.body;
       if (!uid) {
         return res.status(400).json({ error: "Missing required uid parameter." });
+      }
+
+      const isSelf = decodedToken.uid === uid;
+      const isAdmin = await verifyAdminRole(decodedToken);
+
+      if (!isSelf && !isAdmin) {
+        return res.status(403).json({ error: "Acceso denegado: permisos insuficientes para sincronizar credenciales." });
       }
 
       if (!firestoreDb) {
@@ -369,10 +442,25 @@ async function startServer() {
   // Endpoint to verify PIN securely on server with progressive rate limiting
   app.post("/api/users/verify-pin", async (req, res) => {
     try {
+      let decodedToken;
+      try {
+        decodedToken = await getAuthenticatedUser(req);
+      } catch (authErr: any) {
+        return res.status(401).json({ error: authErr.message });
+      }
+
       const { uid, pin } = req.body;
       
       if (!uid || !pin) {
         return res.status(400).json({ error: "Parámetros requeridos faltantes (uid, pin)." });
+      }
+
+      // Authorization: Caller must verify their own PIN, or be an admin
+      const isSelf = decodedToken.uid === uid;
+      const isAdmin = await verifyAdminRole(decodedToken);
+
+      if (!isSelf && !isAdmin) {
+        return res.status(403).json({ error: "Acceso denegado: no tiene permisos para verificar el PIN de este usuario." });
       }
 
       if (!firestoreDb) {
@@ -401,8 +489,18 @@ async function startServer() {
         }
       }
 
-      // If user has no PIN set yet
-      if (!userData.pin) {
+      // Retrieve the PIN hash securely from the private subcollection
+      let userPin = userData.pin || "";
+      const securityDoc = await userDocRef.collection("private").doc("security").get();
+      if (securityDoc.exists) {
+        const secData = securityDoc.data();
+        if (secData && secData.pin) {
+          userPin = secData.pin;
+        }
+      }
+
+      // If user has no PIN set yet anywhere
+      if (!userPin) {
         return res.json({ success: true, message: "El usuario no tiene PIN configurado." });
       }
 
@@ -416,7 +514,7 @@ async function startServer() {
       // 2. Legacy hash: pin
       const legacyHash = crypto.createHash("sha256").update(pin).digest("hex");
       
-      const isMatch = userData.pin === saltedHash || userData.pin === legacyHash || userData.pin === pin;
+      const isMatch = userPin === saltedHash || userPin === legacyHash || userPin === pin;
 
       if (isMatch) {
         // Success: Reset failed attempts & lockout
@@ -472,17 +570,33 @@ async function startServer() {
   // Endpoint to reset PIN using TOTP code
   app.post("/api/users/reset-pin", async (req, res) => {
     try {
+      let decodedToken;
+      try {
+        decodedToken = await getAuthenticatedUser(req);
+      } catch (authErr: any) {
+        return res.status(401).json({ error: authErr.message });
+      }
+
       const { uid, totpCode, newPin } = req.body;
       
       if (!uid || !totpCode || !newPin) {
         return res.status(400).json({ error: "Missing required parameters (uid, totpCode, newPin)." });
       }
 
+      // Authorization: Caller must reset their own PIN, or be an admin
+      const isSelf = decodedToken.uid === uid;
+      const isAdmin = await verifyAdminRole(decodedToken);
+
+      if (!isSelf && !isAdmin) {
+        return res.status(403).json({ error: "Acceso denegado: no tiene permisos para restablecer el PIN de este usuario." });
+      }
+
       if (!firestoreDb) {
         return res.status(503).json({ error: "Database not connected." });
       }
 
-      const userDoc = await firestoreDb.collection("users").doc(uid).get();
+      const userDocRef = firestoreDb.collection("users").doc(uid);
+      const userDoc = await userDocRef.get();
       if (!userDoc.exists) {
         return res.status(404).json({ error: "User not found." });
       }
@@ -511,18 +625,25 @@ async function startServer() {
         return res.status(401).json({ error: "Invalid TOTP code." });
       }
 
-      // Valid! Update the PIN
+      // Valid! Update the PIN securely
       const crypto = await import("crypto");
       const pinToHash = `${uid}_${newPin}`;
       const hashedPin = crypto.createHash("sha256").update(pinToHash).digest("hex");
 
       const nowIso = new Date().toISOString();
-      await firestoreDb.collection("users").doc(uid).update({
-        pin: hashedPin,
+
+      // 1. Write hashed pin to secure private subcollection
+      await userDocRef.collection("private").doc("security").set({
+        pin: hashedPin
+      }, { merge: true });
+
+      // 2. Clear pin hash from main user document to keep it unreadable from client-side
+      await userDocRef.update({
+        pin: "",
         lastPinEntry: nowIso
       });
 
-      if (process.env.NODE_ENV !== 'production') console.log(`Successfully reset PIN for user ${uid} via TOTP verification on server.`);
+      if (process.env.NODE_ENV !== 'production') console.log(`Successfully reset PIN securely for user ${uid} via TOTP verification on server.`);
       res.json({ success: true, message: "PIN updated successfully." });
     } catch (error: any) {
       console.error("Error resetting PIN:", error);
@@ -700,8 +821,21 @@ async function startServer() {
   });
 
   // 3. Simple Direct Test Email Endpoint - /api/emails/test-direct
+  // Protected with verified token; only allows access to authorized administrators
   app.post("/api/emails/test-direct", express.json(), async (req, res) => {
     try {
+      let decodedToken;
+      try {
+        decodedToken = await getAuthenticatedUser(req);
+      } catch (authErr: any) {
+        return res.status(401).json({ error: authErr.message });
+      }
+
+      const isAdmin = await verifyAdminRole(decodedToken);
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Acceso denegado: se requieren privilegios de administrador para enviar correos de prueba." });
+      }
+
       const { email } = req.body;
       if (!email) {
         return res.status(400).json({ error: "Falta la dirección de correo 'email' para enviar la prueba." });

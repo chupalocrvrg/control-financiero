@@ -91,7 +91,7 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
              data.email is string &&
-             data.pin is string && (data.pin.matches('^\\d{6}$') || data.pin.matches('^[a-fA-F0-9]{64}$')) &&
+             data.pin is string && (data.pin == "" || data.pin.matches('^\\d{6}$') || data.pin.matches('^[a-fA-F0-9]{64}$')) &&
              data.status in ['ENABLED', 'DISABLED'] &&
              data.role in ['SUPERADMIN', 'ADMIN', 'USER', 'BODEGUERO', 'enterprise', 'employee'] &&
              (!('ruc' in data) || data.ruc == null || (data.ruc is string && data.ruc.size() <= 50)) &&
@@ -159,6 +159,13 @@ service cloud.firestore {
       );
 
       allow delete: if isAdmin();
+
+      // Secure subcollection for private security hashes (e.g. pin hash, 2FA credentials)
+      // Completely blocks all client-side reading (Zero-Trust) to prevent offline brute-force cracking
+      match /private/security {
+        allow read, list: if false;
+        allow write: if isOwner(userId);
+      }
     }
 
     match /beneficiaries/{id} {

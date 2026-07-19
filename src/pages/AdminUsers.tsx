@@ -442,10 +442,12 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
       
       // Sync Custom Claims on backend dynamically for the modified user
       try {
+        const idToken = user ? await user.getIdToken() : '';
         await fetch('/api/admin/sync-claims', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
           },
           body: JSON.stringify({ uid: editingEntityUser.id })
         });

@@ -11,6 +11,15 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.21.0",
+    date: new Date().toISOString(),
+    changes: [
+      "Mitigación de Escalación de Privilegios: Se implementó la verificación obligatoria del Firebase ID Token en el header Authorization para los endpoints críticos /api/users/profile y /api/admin/sync-claims en server.ts, extrayendo el UID y email de forma segura directamente del token de autenticación verificado para evitar impersonaciones.",
+      "Almacenamiento Zero-Trust de PIN de Seguridad: Se trasladó el hash del PIN de seguridad a la subcolección privada y segura /users/{userId}/private/security en Firestore, protegida con reglas de seguridad estrictas que impiden cualquier lectura desde el lado del cliente (evitando ataques de fuerza bruta offline contra hashes filtrados).",
+      "Protección y Aseguramiento de Endpoints Auxiliares: Se blindaron los endpoints de diagnóstico de base de datos (/api/diagnostics/db) y de envío directo de correo electrónico (/api/emails/test-direct) con verificación estricta de token de Firebase y roles de administrador (ADMIN/SUPERADMIN) para impedir accesos no autorizados."
+    ],
+  },
+  {
     version: "4.20.0",
     date: new Date().toISOString(),
     changes: [
