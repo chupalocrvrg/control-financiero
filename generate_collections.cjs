@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+const fs = require('fs');
+
+const content = `import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, orderBy, where } from 'firebase/firestore';
 import { Receipt, Plus, Trash2, Pencil, Calendar, X, Save, FileText, User, ChevronDown, ChevronUp } from 'lucide-react';
@@ -169,14 +171,14 @@ export default function Collections() {
 
       if (editingCollection) {
         await updateDoc(doc(db, 'collections', editingCollection.id), dataToSave);
-        await logAudit(AuditAction.COLLECTION_UPDATE, `Cobranza editada - $ ${dataToSave.totalCollected}`, editingCollection.id);
+        await logAudit(AuditAction.COLLECTION_UPDATE, \`Cobranza editada - \$ \${dataToSave.totalCollected}\`, editingCollection.id);
       } else {
         const newDoc = await addDoc(collection(db, 'collections'), {
           ...dataToSave,
           enterpriseId: currentEnterpriseId,
           createdAt: Timestamp.now()
         });
-        await logAudit(AuditAction.COLLECTION_CREATE, `Cobranza registrada - $ ${dataToSave.totalCollected}`, newDoc.id);
+        await logAudit(AuditAction.COLLECTION_CREATE, \`Cobranza registrada - \$ \${dataToSave.totalCollected}\`, newDoc.id);
       }
       setIsModalOpen(false);
       fetchData();
@@ -192,7 +194,7 @@ export default function Collections() {
     if (await showConfirm('Eliminar Cobranza', '¿Está seguro de eliminar este registro?', { type: 'danger' })) {
       try {
         await deleteDoc(doc(db, 'collections', id));
-        await logAudit(AuditAction.COLLECTION_DELETE, `Cobranza eliminada`, id);
+        await logAudit(AuditAction.COLLECTION_DELETE, \`Cobranza eliminada\`, id);
         fetchData();
       } catch (err: any) {
         console.error('Error deleting collection:', err);
@@ -295,11 +297,11 @@ export default function Collections() {
                   <div className="flex items-center gap-8">
                     <div className="text-right">
                       <p className="text-[10px] uppercase font-black text-neutral-400 mb-1 tracking-widest">Total Recaudado</p>
-                      <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">${totalCollected.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                      <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">\${totalCollected.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
                     </div>
                     <div className="text-right hidden sm:block">
                       <p className="text-[10px] uppercase font-black text-neutral-400 mb-1 tracking-widest">Efectivo Retenido</p>
-                      <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">${totalCash.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                      <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">\${totalCash.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
                     </div>
                     <div className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg">
                       {isExpanded ? <ChevronUp className="w-5 h-5 text-neutral-500" /> : <ChevronDown className="w-5 h-5 text-neutral-500" />}
@@ -351,13 +353,13 @@ export default function Collections() {
                                     )}
                                   </td>
                                   <td className="px-6 py-4 text-right font-bold text-neutral-900 dark:text-neutral-100">
-                                    ${coll.totalCollected.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                    \${coll.totalCollected.toLocaleString(undefined, {minimumFractionDigits: 2})}
                                   </td>
                                   <td className="px-6 py-4 text-right text-neutral-600 dark:text-neutral-400">
-                                    ${coll.depositsTransfers.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                    \${coll.depositsTransfers.toLocaleString(undefined, {minimumFractionDigits: 2})}
                                   </td>
                                   <td className="px-6 py-4 text-right font-bold text-emerald-600 dark:text-emerald-400">
-                                    ${coll.cashFinal.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                    \${coll.cashFinal.toLocaleString(undefined, {minimumFractionDigits: 2})}
                                   </td>
                                   <td className="px-6 py-4">
                                     <div className="flex items-center justify-end gap-2">
@@ -621,11 +623,11 @@ export default function Collections() {
                       type="text"
                       disabled
                       value={calculatedCashFinal.toFixed(2)}
-                      className={`w-full pl-8 pr-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 border font-bold rounded-xl outline-none ${
+                      className={\`w-full pl-8 pr-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 border font-bold rounded-xl outline-none \${
                         calculatedCashFinal < 0 
                           ? 'border-red-300 text-red-600' 
                           : 'border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
-                      }`}
+                      }\`}
                     />
                   </div>
                 </div>
@@ -659,3 +661,6 @@ export default function Collections() {
     </div>
   );
 }
+`;
+
+fs.writeFileSync('src/pages/Collections.tsx', content);

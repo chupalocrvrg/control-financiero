@@ -61,6 +61,8 @@ export default function CheckSearch() {
   const [isTrashOpen, setIsTrashOpen] = useState(false);
   const [trashChecks, setTrashChecks] = useState<Check[]>([]);
   const [trashLoading, setTrashLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   const [filters, setFilters] = useState({
     provider: '',
@@ -261,27 +263,6 @@ export default function CheckSearch() {
     setExpandedInvoices(newSet);
   };
 
-  const handleExport = () => {
-    const exportData = filteredData.checks.map(c => {
-      const inv = filteredData.invoices.find(i => i.id === c.invoiceId);
-      return {
-        'Beneficiario': c.beneficiaryName,
-        'Factura': inv?.invoiceNumber || 'N/A',
-        'Concepto': c.concept,
-        'Nº Cheque': c.checkNumber,
-        'Fecha Vencimiento': format(parseISO(c.dueDate), 'dd/MM/yyyy'),
-        'Valor': c.amount,
-        'Estado': c.status === 'PAID' ? 'PAGADO' : 'PENDIENTE'
-      };
-    });
-
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Cheques");
-    XLSX.writeFile(wb, `Reporte_Cheques_${format(new Date(), 'yyyyMMdd')}.xlsx`);
-    logAudit(AuditAction.SENSITIVE_READ, `Exportación de reporte de cheques a Excel. Se exportaron ${exportData.length} registros.`);
-  };
-
   const clearFilters = () => {
     // Clear typed inputs directly too
     setTypedProvider('');
@@ -313,13 +294,6 @@ export default function CheckSearch() {
           >
             <Trash className="w-5 h-5 mr-2 text-indigo-505" />
             Papelera Reciclaje
-          </button>
-          <button
-            onClick={handleExport}
-            className="flex items-center px-6 py-3 bg-emerald-600 dark:bg-emerald-500 text-white rounded-2xl hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-all text-sm font-black shadow-lg shadow-emerald-100 dark:shadow-none"
-          >
-            <Download className="w-5 h-5 mr-3" />
-            Exportar Reporte Excel
           </button>
         </div>
       </header>
@@ -492,7 +466,13 @@ export default function CheckSearch() {
               <div className="col-span-2 text-right">Monto Acumulado</div>
               <div className="col-span-2 text-center">Estado</div>
             </div>
-            {filteredData.invoices.map(invoice => {
+                        {(() => {
+              const totalPages = Math.ceil(filteredData.invoices.length / ITEMS_PER_PAGE);
+              const paginatedInvoices = filteredData.invoices.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+              
+              return (
+                <>
+                  {paginatedInvoices.map(invoice => {
               const isExpanded = expandedInvoices.has(invoice.id);
               const invoiceChecks = filteredData.checks.filter(c => c.invoiceId === invoice.id)
                 .sort((a, b) => parseISO(a.dueDate).getTime() - parseISO(b.dueDate).getTime());
@@ -603,7 +583,33 @@ export default function CheckSearch() {
                 </div>
               );
             })}
-          </div>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-6 py-4 bg-neutral-50 dark:bg-neutral-900 border-t border-neutral-100 dark:border-neutral-800">
+                <p className="text-sm text-neutral-500">
+                  Mostrando {(currentPage - 1) * ITEMS_PER_PAGE + 1} a {Math.min(currentPage * ITEMS_PER_PAGE, filteredData.invoices.length)} de {filteredData.invoices.length} registros
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="px-4 py-2 text-sm font-bold text-neutral-600 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl disabled:opacity-50 hover:bg-neutral-50"
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-4 py-2 text-sm font-bold text-neutral-600 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl disabled:opacity-50 hover:bg-neutral-50"
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              </div>
+            )}
+            </>
+            );
+          })()}
+        </div>
         )}
       </div>
 

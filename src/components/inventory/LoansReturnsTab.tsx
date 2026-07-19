@@ -50,6 +50,49 @@ export default function LoansReturnsTab() {
   const [revertComment, setRevertComment] = useState('');
 
   const currentEnterpriseId = profile?.role === 'BODEGUERO' ? profile?.enterpriseId : user?.uid;
+  // Calculate houseStock dynamically
+  const houseStock = React.useMemo(() => {
+    const stock: Record<string, number> = {};
+    if (type === 'LOAN' && commercialHouse) {
+      logs.forEach(lr => {
+        if (lr.commercialHouse.toLowerCase() === commercialHouse.trim().toLowerCase()) {
+          lr.articles.forEach(art => {
+            if (!stock[art.articleId]) stock[art.articleId] = 0;
+            if (lr.type === 'RETURN') {
+              // Egreso to commercial house
+              stock[art.articleId] += art.quantity;
+            } else if (lr.type === 'LOAN') {
+              // Ingreso from commercial house
+              stock[art.articleId] -= art.quantity;
+            }
+          });
+        }
+      });
+    }
+    return stock;
+  }, [type, commercialHouse, logs]);
+
+  const availableArticles = React.useMemo(() => {
+    if (type === 'LOAN' && commercialHouse) {
+      return articles.filter(a => houseStock[a.id] && houseStock[a.id] > 0);
+    }
+    return articles;
+  }, [type, commercialHouse, articles, houseStock]);
+  
+  // Create a fake inventories array for LOAN so the max is restricted
+  const effectiveInventories = React.useMemo(() => {
+    if (type === 'LOAN' && commercialHouse) {
+      return availableArticles.map(a => ({
+        id: a.id,
+        warehouseId: warehouseId,
+        articleId: a.id,
+        quantity: houseStock[a.id] || 0,
+        userId: currentEnterpriseId
+      })) as WarehouseInventory[];
+    }
+    return inventories;
+  }, [type, commercialHouse, availableArticles, houseStock, warehouseId, currentEnterpriseId, inventories]);
+
 
   useEffect(() => {
     if (currentEnterpriseId) {
@@ -173,21 +216,29 @@ export default function LoansReturnsTab() {
     }
 
     // Validate quantities and stock availability for RETURNS
-    for (const item of items) {
-      if (item.quantity <= 0) {
-        setError('Las cantidades registradas deben ser mayores a 0.');
-        return;
-      }
-
-      if (type === 'RETURN') {
-        const available = getWarehouseStock(item.articleId, warehouseId);
-        if (item.quantity > available) {
-          const articleName = articles.find(a => a.id === item.articleId)?.name || 'Artículo';
-          setError(`Stock insuficiente en bodega para devolver "${articleName}". Disponible: ${available} uds.`);
+          for (const item of items) {
+        if (!item.articleId) {
+          setError('Debe seleccionar artículos válidos');
           return;
         }
+        if (type === 'RETURN') { // Egreso
+          const available = inventories
+            .filter(inv => inv.warehouseId === warehouseId && inv.articleId === item.articleId)
+            .reduce((acc, inv) => acc + inv.quantity, 0);
+          if (item.quantity > available) {
+            const articleName = articles.find(a => a.id === item.articleId)?.name || 'Artículo';
+            setError(`Stock insuficiente en bodega para egresar "${articleName}". Disponible: ${available} uds.`);
+            return;
+          }
+        } else if (type === 'LOAN' && commercialHouse) { // Ingreso
+          const available = houseStock[item.articleId] || 0;
+          if (item.quantity > available) {
+            const articleName = articles.find(a => a.id === item.articleId)?.name || 'Artículo';
+            setError(`Stock insuficiente en casa comercial para devolver "${articleName}". Disponible: ${available} uds.`);
+            return;
+          }
+        }
       }
-    }
 
     setSubmitting(true);
 
@@ -454,8 +505,8 @@ export default function LoansReturnsTab() {
                   <div key={index} className="flex gap-2 items-start bg-neutral-50 dark:bg-neutral-800/30 p-3 rounded-2xl border border-neutral-100 dark:border-neutral-800/50">
                     <div className="flex-1">
                       <ArticleSelector 
-                        articles={articles}
-                        inventories={inventories}
+                        articles={availableArticles}
+                        inventories={effectiveInventories}
                         warehouseId={warehouseId}
                         articleId={item.articleId}
                         quantity={item.quantity}
@@ -463,7 +514,7 @@ export default function LoansReturnsTab() {
                         onChangeArticle={(id) => handleItemChange(index, 'articleId', id)}
                         onChangeQuantity={(qty) => handleItemChange(index, 'quantity', qty)}
                         onChangeSeries={(series) => handleItemChange(index, 'seriesList', series)}
-                        isReceiving={type === 'LOAN'}
+                        isReceiving={false} // We enforce limits for BOTH (either warehouse limit or house limit)
                       />
                     </div>
 

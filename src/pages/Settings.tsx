@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { db } from '../firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 import { storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
@@ -11,17 +11,22 @@ import { Save, Plus, Trash2, Shield, Globe, Palette, Monitor, Calculator, Sun, M
 import { cn } from '../lib/utils';
 import * as XLSX from 'xlsx';
 import { logAudit, AuditAction } from '../lib/audit';
+import * as OTPAuth from 'otpauth';
+import { QRCodeSVG } from 'qrcode.react';
 
 export default function Settings() {
-  const { user, profile, updateProfile } = useAuth();
+  const { user, profile, updateProfile, verifyPin, impersonatedUser } = useAuth();
   const { settings, updateSettings } = useSettings();
   const { showToast } = useNotification();
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'GENERAL' | 'APPEARANCE' | 'SECURITY' | 'FINANCIAL' | 'BACKUP'>('GENERAL');
 
   const [profileData, setProfileData] = useState({ name: '', phone: '', photoUrl: '' });
-  const [securityData, setSecurityData] = useState({ pin: '', pinInactivityLimit: 60 });
+  const [securityData, setSecurityData] = useState({ oldPin: '', newPin: '', confirmPin: '', pinInactivityLimit: 60 });
   const [backupPin, setBackupPin] = useState('');
+  const [totpSetup, setTotpSetup] = useState<{ secret: OTPAuth.Secret, uri: string } | null>(null);
+  const [totpCode, setTotpCode] = useState('');
+  const [showTotpModal, setShowTotpModal] = useState(false);
   const [positionConfirmTimer, setPositionConfirmTimer] = useState<number | null>(null);
   const [previousMenuPosition, setPreviousMenuPosition] = useState(settings.menuPosition);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -84,9 +89,48 @@ export default function Settings() {
   useEffect(() => {
     if (user && profile) {
       setProfileData({ name: profile.name || '', phone: profile.phone || '', photoUrl: profile.photoUrl || '' });
-      setSecurityData({ pin: profile.pin || '', pinInactivityLimit: profile.pinInactivityLimit || 60 });
+      setSecurityData({ oldPin: '', newPin: '', confirmPin: '', pinInactivityLimit: profile.pinInactivityLimit || 60 });
     }
   }, [user, profile]);
+
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 256;
+        const MAX_HEIGHT = 256;
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        setProfileData({ ...profileData, photoUrl: dataUrl });
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSaveProfile = async () => {
     if (!profileData.name.trim()) {
@@ -104,14 +148,110 @@ export default function Settings() {
     }
   };
 
-  const handleSaveSecurity = async () => {
-    if (securityData.pin.length !== 6) {
-      showToast("El PIN debe tener 6 dígitos numéricos.", "warning");
+  
+  const handleSetupTotp = () => {
+    const secret = new OTPAuth.Secret({ size: 20 });
+    const totp = new OTPAuth.TOTP({
+      issuer: 'Control Financiero',
+      label: profile?.email || 'Usuario',
+      algorithm: 'SHA1',
+      digits: 6,
+      period: 30,
+      secret: secret
+    });
+    setTotpSetup({ secret, uri: totp.toString() });
+    setShowTotpModal(true);
+  };
+
+  const handleVerifyAndSaveTotp = async () => {
+    if (!totpSetup || !totpCode) return;
+    
+    const totp = new OTPAuth.TOTP({
+      issuer: 'Control Financiero',
+      label: profile?.email || 'Usuario',
+      algorithm: 'SHA1',
+      digits: 6,
+      period: 30,
+      secret: totpSetup.secret
+    });
+
+    const delta = totp.validate({ token: totpCode, window: 1 });
+    if (delta === null) {
+      showToast('Código incorrecto', 'error');
       return;
     }
+
+    try {
+      setLoading(true);
+      await updateProfile({ 
+        totpSecret: totpSetup.secret.base32,
+        totpEnabled: true
+      });
+      showToast('Autenticador configurado exitosamente', 'success');
+      setShowTotpModal(false);
+      setTotpSetup(null);
+      setTotpCode('');
+    } catch (error) {
+      showToast('Error al guardar configuración', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemoveTotp = async () => {
+    if (!window.confirm('¿Está seguro de que desea eliminar el autenticador de dos pasos? Esto disminuirá la seguridad de su cuenta.')) return;
+    try {
+      setLoading(true);
+      await updateProfile({
+        totpSecret: '',
+        totpEnabled: false
+      });
+      showToast('Autenticador removido', 'success');
+    } catch (error) {
+      showToast('Error al remover el autenticador', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveSecurity = async () => {
+    if (securityData.newPin || securityData.confirmPin || securityData.oldPin) {
+      if (!securityData.oldPin || securityData.oldPin.length !== 6) {
+        showToast("Debes ingresar tu PIN actual de 6 dígitos.", "warning");
+        return;
+      }
+      if (securityData.newPin.length !== 6) {
+        showToast("El nuevo PIN debe tener 6 dígitos numéricos.", "warning");
+        return;
+      }
+      if (securityData.newPin !== securityData.confirmPin) {
+        showToast("El nuevo PIN y su confirmación no coinciden.", "warning");
+        return;
+      }
+      
+      setLoading(true);
+      try {
+        const isOldPinValid = await verifyPin(securityData.oldPin);
+        if (!isOldPinValid) {
+          showToast("El PIN actual ingresado es incorrecto.", "error");
+          setLoading(false);
+          return;
+        }
+      } catch (error) {
+        showToast("Error al verificar el PIN actual.", "error");
+        setLoading(false);
+        return;
+      }
+    }
+    
     setLoading(true);
     try {
-      await updateProfile(securityData);
+      const updateData: any = { pinInactivityLimit: securityData.pinInactivityLimit };
+      if (securityData.newPin) {
+        updateData.pin = securityData.newPin;
+      }
+      await updateProfile(updateData);
+      setSecurityData(prev => ({ ...prev, oldPin: '', newPin: '', confirmPin: '' }));
       showToast("Seguridad actualizada correctamente", "success");
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'users');
@@ -169,16 +309,73 @@ export default function Settings() {
   ];
 
   // Backup handlers
+  
+  const fetchAllData = async () => {
+    const tenantId = impersonatedUser 
+      ? impersonatedUser.uid 
+      : (profile?.role === 'enterprise' ? user?.uid : (profile?.enterpriseId || user?.uid || ''));
+    if (!tenantId) throw new Error("No hay un identificador de empresa/inquilino activo");
+
+    const [
+      employees,
+      checks,
+      sales,
+      collections,
+      articles,
+      invoices,
+      beneficiaries,
+      budgets,
+      warehouses,
+      warehouse_inventory,
+      loans_returns,
+      transfers,
+      inventory_sales
+    ] = await Promise.all([
+      getDocs(collection(db, 'employees')),
+      getDocs(collection(db, 'checks')),
+      getDocs(collection(db, 'sales')),
+      getDocs(collection(db, 'collections')),
+      getDocs(collection(db, 'articles')),
+      getDocs(collection(db, 'invoices')),
+      getDocs(collection(db, 'beneficiaries')),
+      getDocs(collection(db, 'budgets')),
+      getDocs(collection(db, 'warehouses')),
+      getDocs(collection(db, 'warehouse_inventory')),
+      getDocs(collection(db, 'loans_returns')),
+      getDocs(collection(db, 'transfers')),
+      getDocs(collection(db, 'inventory_sales')),
+    ]);
+
+    const filterByTenant = (list: any[]) => {
+      return list.filter(d => d.enterpriseId === tenantId || d.userId === tenantId);
+    };
+
+    return {
+      employees: filterByTenant(employees.docs.map(d => ({id: d.id, ...(d.data() as any)}))),
+      checks: filterByTenant(checks.docs.map(d => ({id: d.id, ...(d.data() as any)}))),
+      sales: filterByTenant(sales.docs.map(d => ({id: d.id, ...(d.data() as any)}))),
+      collections: filterByTenant(collections.docs.map(d => ({id: d.id, ...(d.data() as any)}))),
+      inventory: filterByTenant(articles.docs.map(d => ({id: d.id, ...(d.data() as any)}))),
+      invoices: filterByTenant(invoices.docs.map(d => ({id: d.id, ...(d.data() as any)}))),
+      beneficiaries: filterByTenant(beneficiaries.docs.map(d => ({id: d.id, ...(d.data() as any)}))),
+      budgets: filterByTenant(budgets.docs.map(d => ({id: d.id, ...(d.data() as any)}))),
+      warehouses: filterByTenant(warehouses.docs.map(d => ({id: d.id, ...(d.data() as any)}))),
+      warehouse_inventory: filterByTenant(warehouse_inventory.docs.map(d => ({id: d.id, ...(d.data() as any)}))),
+      loans_returns: filterByTenant(loans_returns.docs.map(d => ({id: d.id, ...(d.data() as any)}))),
+      transfers: filterByTenant(transfers.docs.map(d => ({id: d.id, ...(d.data() as any)}))),
+      inventory_sales: filterByTenant(inventory_sales.docs.map(d => ({id: d.id, ...(d.data() as any)}))),
+    };
+  };
+
   const handleExport = async (format: 'json' | 'excel') => {
-    if (backupPin !== profile?.pin) {
+    if (!(await verifyPin(backupPin))) {
       showToast("El PIN de acceso es incorrecto", "error");
       return;
     }
     setLoading(true);
     try {
-      const dbData = { users: [], settings: [], checks: [], invoices: [], beneficiaries: [], sales: [], budgets: [], collections: [] };
-      // Omitted full implementation for brevity, exporting dummy for now
       showToast("Exportando base de datos...", "success");
+      const dbData = await fetchAllData();
       
       if (format === 'json') {
         const blob = new Blob([JSON.stringify(dbData, null, 2)], { type: 'application/json' });
@@ -187,13 +384,88 @@ export default function Settings() {
         a.href = url;
         a.download = `backup_control360_${new Date().toISOString().split('T')[0]}.json`;
         a.click();
-        await logAudit(AuditAction.SENSITIVE_READ, `Exportación de copia de seguridad (JSON) de la base de datos.`);
+        await logAudit(AuditAction.SENSITIVE_READ, 'Exportación de copia de seguridad (JSON) de la base de datos.');
       } else {
         const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.json_to_sheet([{ status: "exported" }]);
-        XLSX.utils.book_append_sheet(wb, ws, "Backup");
+        
+        // Empleados
+        const empData = dbData.employees.map((e: any) => {
+          const empBudgets = dbData.budgets.filter((b: any) => b.employeeId === e.id);
+          const lastBudget = empBudgets[empBudgets.length - 1];
+          return {
+            'nombre': `${e.name || ''} ${e.lastName || ''}`.trim(),
+            'Rol (cobrador - vendedor o ambos)': e.role || '',
+            'Presupuesto Ventas': lastBudget?.salesBudget || 0,
+            'Presupuesto Cobranza': lastBudget?.collectionsBudget || 0
+          };
+        });
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(empData), "empleados");
+        
+        // Cheques
+        const checkData = dbData.checks
+          .sort((a: any, b: any) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+          .map((c: any) => {
+            const inv = dbData.invoices.find((i: any) => i.id === c.invoiceId);
+            return {
+              'Beneficiario': c.beneficiaryName || '',
+              '# Factura': inv?.invoiceNumber || c.invoiceId || '',
+              'Concepto': c.concept || '',
+              '# Cheque': c.checkNumber || '',
+              'Fecha Pago': c.dueDate || '',
+              'Valor': c.amount || 0,
+              'Banco': c.bank || '',
+              'Estado': c.status === 'PAID' ? 'PAGADO' : 'PENDIENTE'
+            };
+          });
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(checkData), "cheques");
+        
+        // Ventas
+        const salesData = dbData.sales.map((s: any) => ({
+          'fecha': s.date || '',
+          'vendedor': dbData.employees.find((e: any) => e.id === s.employeeId)?.name || s.employeeId || '',
+          'cliente': s.clientName || '',
+          'tipo (contado o credito)': s.type || '',
+          'articulo/producto detallado': s.article || '',
+          'valor final': s.totalValue || 0
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(salesData), "ventas");
+        
+        // Cobranza
+        const colData = dbData.collections.map((c: any) => ({
+          'Fecha Inicio': c.initialDate || '',
+          'Fecha Fin': c.finalDate || '',
+          'Cobrador': dbData.employees.find((e: any) => e.id === c.employeeId)?.name || c.employeeId || '',
+          'Recibo Inicial': c.initialReceipt || '',
+          'Recibo Final': c.finalReceipt || '',
+          'Total Cobrado': c.totalCollected || 0,
+          'Depósitos': c.depositsTransfers || 0,
+          'Efectivo': c.cashFinal || 0
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(colData), "cobranza");
+        
+        // Inventario
+        const invData = dbData.inventory.map((i: any) => {
+          const itemInvs = dbData.warehouse_inventory.filter((wi: any) => wi.articleId === i.id);
+          const warehousesAssigned = itemInvs.map((wi: any) => {
+            const wh = dbData.warehouses.find((w: any) => w.id === wi.warehouseId);
+            return wh ? `${wh.name} (${wi.quantity})` : `Bodega ID: ${wi.warehouseId} (${wi.quantity})`;
+          }).join(', ');
+
+          return {
+            'nombre del articulo': i.name || '',
+            'categoria': i.category || '',
+            'marca': i.brand || '',
+            'modelo': i.model || '',
+            'codigo de barras': i.barcode || '',
+            'minimo para alerta': i.minStockAlert || 0,
+            'Numero de serie': (i.seriesList || []).join(', '),
+            'Bodega a la que fue asignada': warehousesAssigned || 'Ninguna'
+          };
+        });
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(invData), "inventario");
+        
         XLSX.writeFile(wb, `backup_control360_${new Date().toISOString().split('T')[0]}.xlsx`);
-        await logAudit(AuditAction.SENSITIVE_READ, `Exportación de copia de seguridad (Excel) de la base de datos.`);
+        await logAudit(AuditAction.SENSITIVE_READ, 'Exportación de copia de seguridad (Excel) de la base de datos.');
       }
     } catch (e) {
       console.error(e);
@@ -205,7 +477,7 @@ export default function Settings() {
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>, mode: 'overwrite' | 'merge') => {
-    if (backupPin !== profile?.pin) {
+    if (!(await verifyPin(backupPin))) {
       showToast("El PIN de acceso es incorrecto", "error");
       if (e.target) e.target.value = '';
       return;
@@ -215,8 +487,66 @@ export default function Settings() {
     
     setLoading(true);
     try {
-      // Mock import
+      const activeUid = impersonatedUser 
+        ? impersonatedUser.uid 
+        : (profile?.role === 'enterprise' ? user?.uid : (profile?.enterpriseId || user?.uid || ''));
+      if (!activeUid) throw new Error("No hay usuario activo");
+      
+      const fileText = await file.text();
+      let importedData;
+      if (file.name.endsWith('.json')) {
+        importedData = JSON.parse(fileText);
+      } else {
+         showToast("La importación desde Excel aún no está completamente soportada, use JSON", "error");
+         setLoading(false);
+         setBackupPin('');
+         if (e.target) e.target.value = '';
+         return;
+      }
+      
+      const batch = writeBatch(db);
+      
+      const collectionsMap: any = {
+        employees: 'employees',
+        checks: 'checks',
+        sales: 'sales',
+        collections: 'collections',
+        inventory: 'articles',
+        invoices: 'invoices',
+        beneficiaries: 'beneficiaries',
+        budgets: 'budgets',
+        warehouses: 'warehouses',
+        warehouse_inventory: 'warehouse_inventory',
+        loans_returns: 'loans_returns',
+        transfers: 'transfers',
+        inventory_sales: 'inventory_sales'
+      };
+      
+      for (const [key, collectionName] of Object.entries(collectionsMap)) {
+        const listName = key === 'inventory' ? 'inventory' : key;
+        if (importedData[listName] && Array.isArray(importedData[listName])) {
+           for (const item of importedData[listName]) {
+             const docId = item.id || crypto.randomUUID();
+             const docRef = doc(db, collectionName as string, docId);
+             const dataToSave = { ...item };
+             delete dataToSave.id;
+             
+             if (dataToSave.hasOwnProperty('enterpriseId') || collectionName === 'employees' || collectionName === 'sales' || collectionName === 'collections' || collectionName === 'checks' || collectionName === 'budgets') {
+               dataToSave.enterpriseId = activeUid;
+             }
+             if (dataToSave.hasOwnProperty('userId') || collectionName === 'articles' || collectionName === 'warehouses' || collectionName === 'warehouse_inventory' || collectionName === 'loans_returns' || collectionName === 'transfers' || collectionName === 'inventory_sales' || collectionName === 'invoices' || collectionName === 'beneficiaries') {
+               dataToSave.userId = activeUid;
+             }
+             
+             batch.set(docRef, dataToSave, { merge: true });
+           }
+        }
+      }
+      
+      await batch.commit();
+      
       showToast(`Base de datos restaurada en modo: ${mode === 'merge' ? 'Fusión' : 'Sobreescritura'}`, "success");
+      await logAudit(AuditAction.SETTINGS_UPDATE, `Importación de base de datos completa (${mode})`);
     } catch (err) {
       console.error(err);
       showToast("Error importando", "error");
@@ -226,6 +556,7 @@ export default function Settings() {
       if (e.target) e.target.value = '';
     }
   };
+
 
   return (
     <>
@@ -296,18 +627,31 @@ export default function Settings() {
                       className="w-24 h-24 rounded-full object-cover border-4 border-white dark:border-neutral-800 shadow-xl"
                     />
                   </div>
-                  <div className="space-y-2 flex-1">
-                    <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">URL de Foto de Perfil (Opcional)</label>
-                    <input
-                      type="url"
-                      value={profileData.photoUrl}
-                      onChange={(e) => setProfileData({ ...profileData, photoUrl: e.target.value })}
-                      className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-800 rounded-2xl p-4 text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                      placeholder="https://..."
-                    />
+                                    <div className="space-y-3 flex-1">
+                    <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Foto de Perfil</label>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <input
+                        type="url"
+                        value={profileData.photoUrl}
+                        onChange={(e) => setProfileData({ ...profileData, photoUrl: e.target.value })}
+                        className="flex-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                        placeholder="URL de la imagen"
+                      />
+                      <label className="cursor-pointer bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-4 py-3 rounded-xl font-bold text-sm text-center hover:bg-indigo-100 transition-colors whitespace-nowrap">
+                        <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                        Subir Foto
+                      </label>
+                      {user?.photoURL && (
+                        <button
+                          onClick={() => setProfileData({ ...profileData, photoUrl: user.photoURL || '' })}
+                          className="bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 px-4 py-3 rounded-xl font-bold text-sm hover:bg-neutral-200 transition-colors whitespace-nowrap"
+                        >
+                          Usar Google
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Nombre Completo</label>
@@ -331,6 +675,7 @@ export default function Settings() {
                   </div>
                 </div>
               </div>
+
               <div className="px-8 py-4 bg-neutral-50 dark:bg-neutral-950/40 border-t border-neutral-100 dark:border-neutral-800 flex justify-end">
                 <button onClick={handleSaveProfile} disabled={loading} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl text-sm font-bold hover:bg-indigo-700 transition-all flex items-center gap-2">
                   <Save className="w-4 h-4" /> Guardar Cambios
@@ -660,16 +1005,40 @@ export default function Settings() {
                 </div>
               </div>
               <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Código PIN (6 dígitos)</label>
-                  <input
-                    type="password"
-                    maxLength={6}
-                    value={securityData.pin}
-                    onChange={(e) => setSecurityData({ ...securityData, pin: e.target.value.replace(/\D/g, '') })}
-                    className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-800 rounded-2xl p-4 text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-mono tracking-widest text-lg"
-                    placeholder="••••••"
-                  />
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">PIN Actual *</label>
+                    <input
+                      type="password" autoComplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" inputMode="numeric" pattern="[0-9]*"
+                      maxLength={6}
+                      value={securityData.oldPin}
+                      onChange={(e) => setSecurityData({ ...securityData, oldPin: e.target.value.replace(/\D/g, '') })}
+                      className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-800 rounded-2xl p-4 text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-mono tracking-widest text-lg"
+                      placeholder="••••••"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Nuevo PIN (6 dígitos)</label>
+                    <input
+                      type="password" autoComplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" inputMode="numeric" pattern="[0-9]*"
+                      maxLength={6}
+                      value={securityData.newPin}
+                      onChange={(e) => setSecurityData({ ...securityData, newPin: e.target.value.replace(/\D/g, '') })}
+                      className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-800 rounded-2xl p-4 text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-mono tracking-widest text-lg"
+                      placeholder="••••••"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Confirmar Nuevo PIN</label>
+                    <input
+                      type="password" autoComplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" inputMode="numeric" pattern="[0-9]*"
+                      maxLength={6}
+                      value={securityData.confirmPin}
+                      onChange={(e) => setSecurityData({ ...securityData, confirmPin: e.target.value.replace(/\D/g, '') })}
+                      className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-800 rounded-2xl p-4 text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-mono tracking-widest text-lg"
+                      placeholder="••••••"
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Sesión Auto-protegida</label>
@@ -684,6 +1053,34 @@ export default function Settings() {
                     <option value={60}>Bloqueo: 1 Hora</option>
                     <option value={1440}>Bloqueo: 24 Horas</option>
                   </select>
+                </div>
+              </div>
+                            <div className="p-8 border-t border-neutral-100 dark:border-neutral-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold text-neutral-900 dark:text-neutral-50 mb-1">Autenticador de Google (2FA)</h3>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      Utiliza Google Authenticator para reestablecer tu PIN en caso de olvido.
+                    </p>
+                  </div>
+                  <div>
+                    {profile?.totpEnabled ? (
+                      <button 
+                        onClick={handleRemoveTotp}
+                        disabled={loading}
+                        className="px-4 py-2 bg-red-50 text-red-600 rounded-xl text-sm font-bold hover:bg-red-100 transition-colors"
+                      >
+                        Desactivar
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={handleSetupTotp}
+                        className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-sm font-bold hover:bg-indigo-100 transition-colors"
+                      >
+                        Configurar
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="px-8 py-4 bg-neutral-50 dark:bg-neutral-950/40 border-t border-neutral-100 dark:border-neutral-800 flex justify-end">
@@ -745,17 +1142,6 @@ export default function Settings() {
                     <button onClick={handleAddBank} className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-xs hover:bg-blue-100 transition-all flex items-center gap-2">
                       <Plus className="w-4 h-4" /> Nuevo Banco
                     </button>
-                    <button
-                      onClick={() => updateSettings({ uiStyle: 'liquid-glass' })}
-                      className={cn(
-                        "p-6 rounded-2xl border-2 transition-all font-bold text-left space-y-1 relative overflow-hidden sm:col-span-2",
-                        settings.uiStyle === 'liquid-glass' ? "bg-indigo-50/50 dark:bg-indigo-900/20 border-indigo-500 text-indigo-700 dark:text-indigo-300" : "bg-white dark:bg-neutral-800/40 border-neutral-100 dark:border-neutral-800 text-neutral-500"
-                      )}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 pointer-events-none backdrop-blur-md" />
-                      <div className="relative z-10 text-base">Liquid Glass</div>
-                      <div className="relative z-10 text-xs font-normal opacity-80">Efecto avanzado con desenfoques acrílicos, transparencias orgánicas y texturas.</div>
-                    </button>
 
                   </div>
                   {(!settings.banks || settings.banks.length === 0) ? (
@@ -800,7 +1186,7 @@ export default function Settings() {
                   <p className="text-sm font-bold text-amber-700 dark:text-amber-500">Autenticación Requerida</p>
                   <p className="text-xs text-amber-600/80 dark:text-amber-500/80 mt-1">Para exportar o importar datos, por favor ingresa tu PIN de seguridad actual.</p>
                   <input
-                    type="password"
+                    type="password" autoComplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" inputMode="numeric" pattern="[0-9]*"
                     maxLength={6}
                     value={backupPin}
                     onChange={e => setBackupPin(e.target.value.replace(/\D/g, ''))}
@@ -860,6 +1246,66 @@ export default function Settings() {
         </div>
       </div>
     </div>
+
+
+      {/* 2FA TOTP Setup Modal */}
+      {showTotpModal && totpSetup && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-neutral-900 rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl relative border border-neutral-100 dark:border-neutral-800">
+            <div className="text-center mb-6">
+              <div className="mx-auto w-16 h-16 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl flex items-center justify-center mb-4 text-indigo-600 dark:text-indigo-400">
+                <Shield className="w-8 h-8" />
+              </div>
+              <h3 className="text-2xl font-black text-neutral-900 dark:text-white uppercase tracking-tight">Configurar Autenticador</h3>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2 font-medium">Escanea este código QR con la app de Google Authenticator u otra similar.</p>
+            </div>
+            
+            <div className="flex justify-center bg-white p-4 rounded-3xl border border-neutral-200 shadow-sm mx-auto w-fit mb-6">
+              <QRCodeSVG value={totpSetup.uri} size={180} />
+            </div>
+            
+            <div className="text-center mb-6">
+              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 mb-1">Clave Secreta</p>
+              <code className="bg-neutral-100 dark:bg-neutral-800 px-3 py-1.5 rounded-lg text-xs font-mono text-neutral-700 dark:text-neutral-300 break-all select-all">
+                {totpSetup.secret.base32}
+              </code>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block text-center">Código de Verificación (6 dígitos)</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/D/g, ''))}
+                  className="w-full text-center text-3xl tracking-[0.5em] font-black px-4 py-4 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl outline-none focus:border-indigo-500 transition-all"
+                  placeholder="000000"
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowTotpModal(false); setTotpSetup(null); setTotpCode(''); }}
+                  className="flex-1 py-4 bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white rounded-[1.5rem] font-bold active:scale-95 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleVerifyAndSaveTotp}
+                  disabled={loading || totpCode.length !== 6}
+                  className="flex-1 py-4 bg-indigo-600 text-white rounded-[1.5rem] font-bold shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:shadow-none active:scale-95 transition-all"
+                >
+                  {loading ? 'Verificando...' : 'Verificar y Guardar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </>
   );

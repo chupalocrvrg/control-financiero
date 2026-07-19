@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { db, auth } from '../firebase';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
+import { useAuth } from './AuthContext';
 
 type Theme = 'light' | 'dark' | 'system';
 type Currency = 'USD' | 'EUR' | 'ARS' | 'CLP' | 'BRL';
@@ -35,6 +36,8 @@ const colorPalettes: Record<string, Record<number, string>> = {
   }
 };
 
+const enterpriseKeys = ['currency', 'language', 'iva', 'banks'];
+
 interface Settings {
   theme: Theme;
   currency: Currency;
@@ -61,6 +64,7 @@ interface SettingsContextType {
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, profile, impersonatedUser } = useAuth();
   const [settings, setSettings] = useState<Settings>(() => {
     const saved = localStorage.getItem('app-settings');
     const defaultVals = {
@@ -88,7 +92,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     let unsubscribe: () => void = () => {};
 
     const setupSettings = async () => {
-      const user = auth.currentUser;
       if (!user) {
         setLoading(false);
         return;
@@ -96,59 +99,119 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // First, check if user profile has an enterpriseId to load the shared settings
       let targetId = user.uid;
-      try {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          if (userData.enterpriseId) {
-            targetId = userData.enterpriseId;
+      if (profile && profile.uid === user.uid && profile.enterpriseId) {
+        targetId = profile.enterpriseId;
+      } else {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            if (userData.enterpriseId) {
+              targetId = userData.enterpriseId;
+            }
           }
+        } catch (err) {
+          console.warn('Error fetching user profile for settings ID, falling back to user.uid:', err);
         }
-      } catch (err) {
-        console.warn('Error fetching user profile for settings ID, falling back to user.uid:', err);
       }
 
-      const settingsRef = doc(db, 'settings', targetId);
+      const enterpriseSettingsRef = doc(db, 'settings', targetId);
+      const userSettingsRef = doc(db, 'userSettings', user.uid);
       
-      unsubscribe = onSnapshot(settingsRef, (docSnap) => {
+      let entData: any = null;
+      let userData: any = null;
+      
+      const checkAndSet = () => {
+        if (entData !== null && userData !== null) {
+          const enterpriseSettings: any = {};
+          enterpriseKeys.forEach(key => {
+            if (key in entData) {
+              enterpriseSettings[key] = entData[key];
+            }
+          });
+
+          const userDefaults = {
+            theme: 'system' as const,
+            uiStyle: 'classic' as const,
+            dockMagnification: true,
+            dockMagnificationType: 'scale' as const,
+            dockProximity: true,
+          };
+
+          // Try loading from localStorage first to get quick results if offline/cached
+          let localSaved: any = {};
+          const localKey = `app-settings-${user.uid}`;
+          const savedStr = localStorage.getItem(localKey) || localStorage.getItem('app-settings');
+          if (savedStr) {
+            try {
+              localSaved = JSON.parse(savedStr);
+            } catch (e) {
+              console.error('Error parsing saved settings from localStorage:', e);
+            }
+          }
+
+          const mergedSettings = {
+            ...userDefaults,
+            ...enterpriseSettings,
+            ...localSaved,
+            ...userData,
+          };
+
+          setSettings(mergedSettings);
+          setLoading(false);
+        }
+      };
+
+      const unsubEnt = onSnapshot(enterpriseSettingsRef, (docSnap) => {
         if (docSnap.exists()) {
-          setSettings(docSnap.data() as Settings);
+          entData = docSnap.data();
         } else {
-          // Initialize default settings if they don't exist
-          setDoc(settingsRef, {
-            theme: 'system',
-            currency: 'USD',
-            language: 'es',
-            iva: 15,
+          const defaultEnt = { currency: 'USD', language: 'es', iva: 15 };
+          setDoc(enterpriseSettingsRef, defaultEnt).catch(err => {
+            handleFirestoreError(err, OperationType.WRITE, `settings/${targetId}`);
+          });
+          entData = defaultEnt;
+        }
+        checkAndSet();
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, `settings/${targetId}`);
+        if (entData === null) { entData = {}; checkAndSet(); }
+      });
+
+      const unsubUser = onSnapshot(userSettingsRef, (docSnap) => {
+        if (docSnap.exists()) {
+          userData = docSnap.data();
+        } else {
+          const defaultUser = { 
+            theme: 'system', 
             uiStyle: "classic",
             dockMagnification: true,
             dockMagnificationType: 'scale',
-            dockProximity: true,
-          }).catch(err => {
-            handleFirestoreError(err, OperationType.WRITE, `settings/${targetId}`);
+            dockProximity: true
+          };
+          setDoc(userSettingsRef, defaultUser).catch(err => {
+            handleFirestoreError(err, OperationType.WRITE, `userSettings/${user.uid}`);
           });
+          userData = defaultUser;
         }
-        setLoading(false);
+        checkAndSet();
       }, (error) => {
-        handleFirestoreError(error, OperationType.GET, `settings/${targetId}`);
-        setLoading(false);
+        handleFirestoreError(error, OperationType.GET, `userSettings/${user.uid}`);
+        if (userData === null) { userData = {}; checkAndSet(); }
       });
+      
+      unsubscribe = () => {
+        unsubEnt();
+        unsubUser();
+      };
     };
 
-    const authUnsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        setupSettings();
-      } else {
-        setLoading(false);
-        unsubscribe();
-      }
-    });
+    setupSettings();
 
     return () => {
-      authUnsubscribe();
       unsubscribe();
     };
-  }, []);
+  }, [user?.uid, profile?.enterpriseId]);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -208,34 +271,69 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateSettings = async (newSettings: Partial<Settings>) => {
     const updated = { ...settings, ...newSettings };
     setSettings(updated);
-    localStorage.setItem('app-settings', JSON.stringify(updated));
 
-    const user = auth.currentUser;
+    // If simulating/impersonating, DO NOT save to Firestore or original user's localStorage (purely temporal)
+    if (impersonatedUser) {
+      console.log('Temporary settings applied in-memory during simulation');
+      return;
+    }
+
+    if (user) {
+      localStorage.setItem(`app-settings-${user.uid}`, JSON.stringify(updated));
+      localStorage.setItem('app-settings', JSON.stringify(updated));
+    }
+
     if (user) {
       let targetId = user.uid;
-      try {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          if (userData.enterpriseId) {
-            targetId = userData.enterpriseId;
+      if (profile && profile.uid === user.uid && profile.enterpriseId) {
+        targetId = profile.enterpriseId;
+      } else {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            if (userData.enterpriseId) {
+              targetId = userData.enterpriseId;
+            }
           }
+        } catch (err) {
+          console.warn('Error fetching user profile for setting update:', err);
         }
-      } catch (err) {
-        console.warn('Error fetching user profile for setting update:', err);
       }
 
-      const settingsRef = doc(db, 'settings', targetId);
+      const newEnterpriseSettings: any = {};
+      const newUserSettings: any = {};
+      
+      let hasEnt = false;
+      let hasUser = false;
+
+      for (const key of Object.keys(newSettings)) {
+        if (enterpriseKeys.includes(key)) {
+          newEnterpriseSettings[key] = (newSettings as any)[key];
+          hasEnt = true;
+        } else {
+          newUserSettings[key] = (newSettings as any)[key];
+          hasUser = true;
+        }
+      }
+
       try {
-        await setDoc(settingsRef, updated);
-        // Only log major setting changes worth auditing
-        if (newSettings.iva !== undefined || newSettings.currency !== undefined || newSettings.banks !== undefined) {
-          import('../lib/audit').then(({ logAudit, AuditAction }) => {
-            logAudit(AuditAction.SETTINGS_UPDATE, `Configuraciones de sistema actualizadas: ${Object.keys(newSettings).join(', ')}`);
-          });
+        if (hasEnt) {
+          const settingsRef = doc(db, 'settings', targetId);
+          await setDoc(settingsRef, newEnterpriseSettings, { merge: true });
+          // Only log major setting changes worth auditing
+          if (newEnterpriseSettings.iva !== undefined || newEnterpriseSettings.currency !== undefined || newEnterpriseSettings.banks !== undefined) {
+            import('../lib/audit').then(({ logAudit, AuditAction }) => {
+              logAudit(AuditAction.SETTINGS_UPDATE, `Configuraciones de empresa actualizadas: ${Object.keys(newEnterpriseSettings).join(', ')}`);
+            });
+          }
+        }
+        if (hasUser) {
+          const userSettingsRef = doc(db, 'userSettings', user.uid);
+          await setDoc(userSettingsRef, newUserSettings, { merge: true });
         }
       } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, `settings/${targetId}`);
+        handleFirestoreError(error, OperationType.WRITE, `settings or userSettings`);
       }
     }
   };

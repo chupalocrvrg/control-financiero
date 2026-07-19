@@ -700,6 +700,7 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
       benSnaps.docs.forEach(d => batch.delete(doc(db, 'beneficiaries', d.id)));
 
       batch.delete(doc(db, 'settings', selectedUser.id));
+      batch.delete(doc(db, 'userSettings', selectedUser.id));
       batch.delete(doc(db, 'users', selectedUser.id));
       
       await batch.commit();
@@ -1849,7 +1850,7 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block">Confirma con TU PIN de Administrador</label>
                 <input 
-                  type="password" 
+                  type="password" autoComplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" inputMode="numeric" pattern="[0-9]*" 
                   maxLength={6}
                   value={adminPinValue}
                   onChange={(e) => {
@@ -1913,7 +1914,7 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block">Confirma con TU PIN</label>
                 <input 
-                  type="password" 
+                  type="password" autoComplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" inputMode="numeric" pattern="[0-9]*" 
                   maxLength={6}
                   value={migratePinValue}
                   onChange={(e) => {
@@ -1987,7 +1988,7 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block">Confirma con TU PIN de Administrador</label>
                 <input 
-                  type="password" 
+                  type="password" autoComplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" inputMode="numeric" pattern="[0-9]*" 
                   maxLength={6}
                   value={impersonatePinValue}
                   onChange={(e) => {
@@ -2039,7 +2040,7 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest block">Confirma con TU PIN</label>
                 <input 
-                  type="password" 
+                  type="password" autoComplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" inputMode="numeric" pattern="[0-9]*" 
                   maxLength={6}
                   value={deleteUserPinValue}
                   onChange={(e) => {

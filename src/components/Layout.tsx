@@ -417,7 +417,7 @@ export default function Layout() {
             { name: 'Ventas', href: '/sales', icon: ShoppingCart },
             { name: 'Cobranza', href: '/collections', icon: Receipt },
             { name: 'Empleados', href: '/employees', icon: Users },
-            { name: 'Presupuestos', href: '/budgets', icon: Target },
+            
           ]
         },
         { 
@@ -559,21 +559,6 @@ export default function Layout() {
         <div className={cn("flex items-center justify-center gap-3", isHorizontal ? "flex-row" : "flex-col")}>
           {[
             ...navigation,
-            {
-              name: `${profile?.name || 'Usuario'} (${user.email || ''})`,
-              icon: () => (
-                <div className={cn(
-                  "h-full w-full rounded-full flex items-center justify-center font-bold text-sm overflow-hidden select-none border",
-                  isClassicStyle
-                    ? "bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800"
-                    : "bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800"
-                )}>
-                  {profile?.name?.charAt(0) || user.email?.charAt(0)}
-                </div>
-              ),
-              isAvatar: true,
-              href: '/settings',
-            },
             {
               name: 'Cerrar Sesión',
               icon: LogOut,

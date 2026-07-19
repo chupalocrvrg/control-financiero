@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+const fs = require('fs');
+
+const content = `import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, where, writeBatch } from 'firebase/firestore';
 import { Plus, Pencil, Trash2, Users, AlertCircle, Save, X, Target, Calendar, Search } from 'lucide-react';
@@ -139,7 +141,7 @@ export default function Employees() {
           lastName: formData.lastName,
           role: formData.role
         });
-        await logAudit(AuditAction.EMPLOYEE_UPDATE, `Empleado modificado: ${formData.name} ${formData.lastName} (${formData.role})`, editingEmployee.id);
+        await logAudit(AuditAction.EMPLOYEE_UPDATE, \`Empleado modificado: \${formData.name} \${formData.lastName} (\${formData.role})\`, editingEmployee.id);
       } else {
         const newDoc = await addDoc(collection(db, 'employees'), {
           name: formData.name,
@@ -148,7 +150,7 @@ export default function Employees() {
           enterpriseId: currentEnterpriseId,
           createdAt: Timestamp.now()
         });
-        await logAudit(AuditAction.EMPLOYEE_UPDATE, `Empleado creado: ${formData.name} ${formData.lastName} (${formData.role})`, newDoc.id);
+        await logAudit(AuditAction.EMPLOYEE_UPDATE, \`Empleado creado: \${formData.name} \${formData.lastName} (\${formData.role})\`, newDoc.id);
       }
       setIsModalOpen(false);
       fetchEmployees();
@@ -166,7 +168,7 @@ export default function Employees() {
         const empToDelete = employees.find(e => e.id === id);
         await deleteDoc(doc(db, 'employees', id));
         if (empToDelete) {
-           await logAudit(AuditAction.EMPLOYEE_UPDATE, `Empleado eliminado: ${empToDelete.name} ${empToDelete.lastName}`, id);
+           await logAudit(AuditAction.EMPLOYEE_UPDATE, \`Empleado eliminado: \${empToDelete.name} \${empToDelete.lastName}\`, id);
         }
         fetchEmployees();
       } catch (err: any) {
@@ -192,7 +194,7 @@ export default function Employees() {
       setSavingBudgets(true);
       const batch = writeBatch(db);
       
-      Object.values(budgets).forEach((budget: Budget) => {
+      Object.values(budgets).forEach(budget => {
         if (budget.id) {
           batch.update(doc(db, 'budgets', budget.id), {
             salesBudget: budget.salesBudget,
@@ -250,13 +252,13 @@ export default function Employees() {
         <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1 rounded-xl">
           <button
             onClick={() => setActiveTab('PERSONAL')}
-            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'PERSONAL' ? 'bg-white dark:bg-neutral-900 text-indigo-600 shadow-sm' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+            className={\`px-4 py-2 rounded-lg text-sm font-bold transition-all \${activeTab === 'PERSONAL' ? 'bg-white dark:bg-neutral-900 text-indigo-600 shadow-sm' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}\`}
           >
             Personal
           </button>
           <button
             onClick={() => setActiveTab('PRESUPUESTOS')}
-            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'PRESUPUESTOS' ? 'bg-white dark:bg-neutral-900 text-indigo-600 shadow-sm' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+            className={\`px-4 py-2 rounded-lg text-sm font-bold transition-all \${activeTab === 'PRESUPUESTOS' ? 'bg-white dark:bg-neutral-900 text-indigo-600 shadow-sm' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}\`}
           >
             Presupuestos Mensuales
           </button>
@@ -469,7 +471,7 @@ export default function Employees() {
             <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-sm p-6 text-white">
               <h3 className="text-indigo-100 text-sm font-medium mb-1">Presupuesto Global Ventas</h3>
               <div className="text-3xl font-bold mb-2">
-                ${totalSalesBudget.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                \${totalSalesBudget.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </div>
               <p className="text-xs text-indigo-200 mb-4 bg-indigo-950/25 p-2 rounded-lg">
                 La sumatoria de las metas personales define el Presupuesto Global. Los supervisores también asumen esta meta global.
@@ -488,7 +490,7 @@ export default function Employees() {
                         </span>
                       </div>
                       <div className="w-full bg-indigo-950/30 rounded-full h-1.5">
-                        <div className="bg-indigo-300 rounded-full h-1.5" style={{ width: `${pct}%` }}></div>
+                        <div className="bg-indigo-300 rounded-full h-1.5" style={{ width: \`\${pct}%\` }}></div>
                       </div>
                     </div>
                   );
@@ -499,7 +501,7 @@ export default function Employees() {
             <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl shadow-sm p-6 text-white">
               <h3 className="text-emerald-100 text-sm font-medium mb-1">Presupuesto Global Cobranzas</h3>
               <div className="text-3xl font-bold mb-2">
-                ${totalCollectionsBudget.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                \${totalCollectionsBudget.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </div>
               <p className="text-xs text-emerald-100 mb-4 bg-emerald-950/25 p-2.5 rounded-lg border border-emerald-400/20 leading-relaxed">
                 La sumatoria de las metas personales define el Presupuesto Global. Los supervisores también asumen esta meta global.
@@ -518,7 +520,7 @@ export default function Employees() {
                         </span>
                       </div>
                       <div className="w-full bg-emerald-950/30 rounded-full h-1.5">
-                        <div className="bg-emerald-300 rounded-full h-1.5" style={{ width: `${pct}%` }}></div>
+                        <div className="bg-emerald-300 rounded-full h-1.5" style={{ width: \`\${pct}%\` }}></div>
                       </div>
                     </div>
                   );
@@ -611,3 +613,6 @@ export default function Employees() {
     </div>
   );
 }
+`;
+
+fs.writeFileSync('src/pages/Employees.tsx', content);

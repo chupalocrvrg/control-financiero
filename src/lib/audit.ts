@@ -1,4 +1,4 @@
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { User } from 'firebase/auth';
 import { handleFirestoreError, OperationType } from './firestore-errors';
@@ -16,22 +16,27 @@ export enum AuditAction {
   SENSITIVE_READ = 'SENSITIVE_READ',
   EMPLOYEE_UPDATE = 'EMPLOYEE_UPDATE',
   BUDGET_UPDATE = 'BUDGET_UPDATE',
+  SALE_CREATE = 'SALE_CREATE',
   SALE_UPDATE = 'SALE_UPDATE',
+  SALE_DELETE = 'SALE_DELETE',
+  COLLECTION_CREATE = 'COLLECTION_CREATE',
   COLLECTION_UPDATE = 'COLLECTION_UPDATE',
+  COLLECTION_DELETE = 'COLLECTION_DELETE',
 }
 
 export async function logAudit(action: AuditAction, details: string, targetId?: string, overrideUser?: User | null) {
   const path = 'auditLogs';
   try {
     const user = overrideUser || auth.currentUser;
-    await addDoc(collection(db, path), {
+    const docRef = doc(collection(db, path));
+    await setDoc(docRef, {
       action,
       details,
       targetId: targetId || null,
       userId: user?.uid || 'system',
       userEmail: user?.email || 'system',
       timestamp: serverTimestamp(),
-    });
+    }, { merge: true });
   } catch (error) {
     console.error('Failed to log audit:', error);
     handleFirestoreError(error, OperationType.CREATE, path);

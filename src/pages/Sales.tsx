@@ -269,6 +269,26 @@ export default function Sales() {
     return emp ? `${emp.name} ${emp.lastName}` : 'Desconocido';
   };
 
+  // Pagination for sellers
+  const [currentSellerPage, setCurrentSellerPage] = useState(1);
+  const SELLERS_PER_PAGE = 10;
+  const [expandedSellers, setExpandedSellers] = useState<Set<string>>(new Set());
+  const [sellerPages, setSellerPages] = useState<Record<string, number>>({});
+  const ITEMS_PER_PAGE = 10;
+  const [currentMonth, setCurrentMonth] = useState(format(new Date(), 'yyyy-MM'));
+
+  const toggleSeller = (id: string) => {
+    const newSet = new Set(expandedSellers);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setExpandedSellers(newSet);
+  };
+
+  const sellers = employees.filter(e => ['vendedor', 'ambos', 'supervisor_ventas', 'supervisor_general'].includes(e.role));
+  
+  const totalSellerPages = Math.ceil(sellers.length / SELLERS_PER_PAGE);
+  const paginatedSellers = sellers.slice((currentSellerPage - 1) * SELLERS_PER_PAGE, currentSellerPage * SELLERS_PER_PAGE);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -277,24 +297,49 @@ export default function Sales() {
             <ShoppingCart className="w-6 h-6 text-indigo-500" />
             Registro de Ventas
           </h1>
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">Gestión y registro de ventas por empleados</p>
+          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">Gestión de ventas y cumplimiento de presupuestos por vendedor</p>
         </div>
-        <button
-          onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Nueva Venta
-        </button>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 bg-white dark:bg-neutral-900 p-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 shadow-sm">
+            <button 
+              onClick={() => setCurrentMonth(format(new Date(new Date(currentMonth + '-15').setMonth(new Date(currentMonth + '-15').getMonth() - 1)), 'yyyy-MM'))}
+              className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+            >
+              &larr;
+            </button>
+            <div className="flex items-center gap-2 px-3 font-medium text-neutral-900 dark:text-neutral-100">
+              <Calendar className="w-4 h-4 text-indigo-500" />
+              <span className="capitalize">{format(new Date(currentMonth + '-15'), 'MMMM yyyy')}</span>
+            </div>
+            <button 
+              onClick={() => setCurrentMonth(format(new Date(new Date(currentMonth + '-15').setMonth(new Date(currentMonth + '-15').getMonth() + 1)), 'yyyy-MM'))}
+              className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+            >
+              &rarr;
+            </button>
+          </div>
+          <button
+            onClick={() => {
+              setEditingSale(null);
+              setFormData({
+                date: format(new Date(), 'yyyy-MM-dd'),
+                type: 'contado',
+                employeeId: '',
+                isMoto: false,
+                motoType: 'combustion',
+                totalValue: '',
+                clientName: '',
+                article: ''
+              });
+              setIsModalOpen(true);
+            }}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Nueva Venta
+          </button>
+        </div>
       </div>
-
-      {error && (
-        <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 p-4 rounded-xl flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <p className="text-sm font-medium">{error}</p>
-        </div>
-      )}
-
 
       {isSuperAdmin && (
         <div className="bg-amber-50/40 dark:bg-amber-950/10 border border-amber-100 dark:border-amber-900/20 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -322,162 +367,182 @@ export default function Sales() {
         </div>
       )}
 
-      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-neutral-200 dark:border-neutral-800 p-4 mb-6">
-        <h3 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200 mb-4">Filtros de Búsqueda</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-neutral-500 mb-1">Vendedor</label>
-            <input 
-              type="text" 
-              placeholder="Buscar vendedor..."
-              value={filterEmployee}
-              onChange={e => setFilterEmployee(e.target.value)}
-              className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-neutral-500 mb-1">Cliente</label>
-            <input 
-              type="text" 
-              placeholder="Buscar cliente..."
-              value={filterClient}
-              onChange={e => setFilterClient(e.target.value)}
-              className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-            />
-          </div>
-          <div className="col-span-1 md:col-span-2">
-            <div className="flex gap-2 mb-1">
-              <label className="text-xs font-medium text-neutral-500 flex-1">Fecha</label>
-              <select 
-                value={filterDateType} 
-                onChange={e => setFilterDateType(e.target.value as any)}
-                className="text-xs bg-transparent text-indigo-600 font-medium outline-none cursor-pointer"
-              >
-                <option value="exacta">Exacta</option>
-                <option value="rango">Rango</option>
-              </select>
-            </div>
-            {filterDateType === 'exacta' ? (
-              <input 
-                type="date"
-                value={filterDateExact}
-                onChange={e => setFilterDateExact(e.target.value)}
-                className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-              />
-            ) : (
-              <div className="flex items-center gap-2">
-                <input 
-                  type="date"
-                  value={filterDateStart}
-                  onChange={e => setFilterDateStart(e.target.value)}
-                  className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                />
-                <span className="text-neutral-400">a</span>
-                <input 
-                  type="date"
-                  value={filterDateEnd}
-                  onChange={e => setFilterDateEnd(e.target.value)}
-                  className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                />
-              </div>
-            )}
-          </div>
+      {loading ? (
+        <div className="flex items-center justify-center p-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
         </div>
-      </div>
-      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+      ) : sellers.length === 0 ? (
+        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-12 text-center shadow-sm">
+          <ShoppingCart className="w-12 h-12 text-neutral-300 dark:text-neutral-700 mx-auto mb-4" />
+          <h3 className="text-lg font-bold text-neutral-900 dark:text-white mb-2">No hay vendedores configurados</h3>
+          <p className="text-neutral-500 dark:text-neutral-400">Agregue empleados con rol de "vendedor" o "ambos" en el Panel de Administración.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {paginatedSellers.map(seller => {
+            const sellerSales = sales.filter(s => {
+              const matchesEmp = s.employeeId === seller.id;
+              const matchesMonth = s.date && s.date.startsWith(currentMonth);
+              return matchesEmp && matchesMonth;
+            });
+            
+            const totalValue = sellerSales.reduce((sum, s) => sum + (!s.isMoto ? (parseFloat(s.totalValue.toString()) || 0) : 0), 0);
+            const totalMotos = sellerSales.filter(s => s.isMoto).length;
+            const isExpanded = expandedSellers.has(seller.id);
+            
+            const currentPage = sellerPages[seller.id] || 1;
+            const totalPages = Math.max(1, Math.ceil(sellerSales.length / ITEMS_PER_PAGE));
+            const paginatedSellerSales = sellerSales.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-        {loading ? (
-          <div className="p-8 flex justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-          </div>
-        ) : filteredSales.length === 0 ? (
-          <div className="p-8 text-center text-neutral-500 dark:text-neutral-400">
-            No hay ventas registradas.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-neutral-50 dark:bg-neutral-800/50 text-neutral-600 dark:text-neutral-400 font-medium">
-                <tr>
-                  <th className="px-6 py-4">Fecha</th>
-                  <th className="px-6 py-4">Vendedor</th>
-                  <th className="px-6 py-4">Cliente</th>
-                  <th className="px-6 py-4">Tipo</th>
-                  <th className="px-6 py-4">Artículo / Producto Detallado</th>
-                  <th className="px-6 py-4 text-right">Valor Final</th>
-                  <th className="px-6 py-4 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-                {filteredSales.map((sale) => (
-                  <tr key={sale.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-neutral-900 dark:text-neutral-100">
-                      {sale.date}
-                    </td>
-                    <td className="px-6 py-4 font-medium text-neutral-900 dark:text-neutral-100">
-                      {getEmployeeName(sale.employeeId)}
-                    </td>
-                    <td className="px-6 py-4">
-                      {sale.clientName ? (
-                        <div className="flex items-center gap-2 text-neutral-900 dark:text-neutral-100 font-semibold bg-neutral-100 dark:bg-neutral-800/40 px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 w-fit">
-                          <User className="w-4 h-4 text-indigo-500" />
-                          <span>{sale.clientName}</span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-neutral-400 italic">No especificado</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
-                        ${sale.type === 'contado' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'}`}>
-                        {sale.type}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {sale.isMoto ? (
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold">
-                            <Bike className="w-4 h-4" />
-                            <span className="capitalize text-xs">Moto {sale.motoType}</span>
-                          </div>
-                          {sale.article ? (
-                            <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 bg-indigo-50/50 dark:bg-indigo-900/10 px-2.5 py-1 rounded-md border border-indigo-100 dark:border-indigo-800/20 w-fit">{sale.article}</div>
-                          ) : (
-                            <div className="text-xs text-neutral-400 italic">Detalle de moto pendiente</div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="font-semibold text-neutral-900 dark:text-neutral-100 bg-neutral-50 dark:bg-neutral-800/20 px-2.5 py-1 rounded-md border border-neutral-200 dark:border-neutral-700 w-fit">
-                          {sale.article || 'Mercadería General'}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right font-medium">
-                      ${sale.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleOpenModal(sale)}
-                          className="p-2 text-neutral-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(sale.id)}
-                          className="p-2 text-neutral-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+            return (
+              <div key={seller.id} className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm">
+                <div 
+                  className="p-6 cursor-pointer flex flex-wrap items-center justify-between gap-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
+                  onClick={() => toggleSeller(seller.id)}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center">
+                      <User className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-neutral-900 dark:text-neutral-50">{seller.name} {seller.lastName}</h3>
+                      <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">{seller.role.replace('_', ' ')}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-8">
+                    <div className="text-right">
+                      <p className="text-[10px] uppercase font-black text-neutral-400 mb-1 tracking-widest">Ventas Netas</p>
+                      <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                    <div className="text-right hidden sm:block">
+                      <p className="text-[10px] uppercase font-black text-neutral-400 mb-1 tracking-widest">Unidades Moto</p>
+                      <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{totalMotos}</p>
+                    </div>
+                    <div className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg">
+                      {isExpanded ? <svg className="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7"></path></svg> : <svg className="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>}
+                    </div>
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50">
+                    {sellerSales.length === 0 ? (
+                      <div className="p-8 text-center text-neutral-500 dark:text-neutral-400 text-sm">
+                        No hay ventas registradas en este mes.
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                    ) : (
+                      <>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm text-left whitespace-nowrap">
+                            <thead className="bg-neutral-100/50 dark:bg-neutral-800/30 text-neutral-600 dark:text-neutral-400 font-medium">
+                              <tr>
+                                <th className="px-6 py-4">Fecha</th>
+                                <th className="px-6 py-4">Cliente / Artículo</th>
+                                <th className="px-6 py-4 text-center">Tipo</th>
+                                <th className="px-6 py-4 text-center">Moto</th>
+                                <th className="px-6 py-4 text-right">Valor Final</th>
+                                <th className="px-6 py-4 text-right">Acciones</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                              {paginatedSellerSales.map((sale) => (
+                                <tr key={sale.id} className="hover:bg-white dark:hover:bg-neutral-800/50 transition-colors">
+                                  <td className="px-6 py-4 text-neutral-600 dark:text-neutral-400 font-mono text-xs">
+                                    {sale.date}
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <div className="font-bold text-neutral-900 dark:text-neutral-100">{sale.clientName || 'Sin cliente'}</div>
+                                    <div className="text-xs text-neutral-500">{sale.article}</div>
+                                  </td>
+                                  <td className="px-6 py-4 text-center">
+                                    <span className={"px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-lg " + (sale.type === 'contado' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" : "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400")}>
+                                      {sale.type}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 text-center">
+                                    {sale.isMoto ? (
+                                      <span className={"px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-lg " + (sale.motoType === 'electrico' ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400")}>
+                                        {sale.motoType}
+                                      </span>
+                                    ) : (
+                                      <span className="text-neutral-400">-</span>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4 text-right font-bold text-neutral-900 dark:text-neutral-100">
+                                    ${(sale.totalValue || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <div className="flex items-center justify-end gap-2">
+                                      <button onClick={() => handleOpenModal(sale)} className="p-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg">
+                                        <Pencil className="w-4 h-4" />
+                                      </button>
+                                      <button onClick={() => handleDelete(sale.id)} className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg">
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {totalPages > 1 && (
+                          <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800">
+                            <p className="text-xs text-neutral-500">
+                              Mostrando {(currentPage - 1) * ITEMS_PER_PAGE + 1} a {Math.min(currentPage * ITEMS_PER_PAGE, sellerSales.length)} de {sellerSales.length} ventas
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setSellerPages(prev => ({ ...prev, [seller.id]: Math.max(1, currentPage - 1) }))}
+                                disabled={currentPage === 1}
+                                className="px-3 py-1.5 text-xs font-bold text-neutral-600 bg-neutral-100 dark:bg-neutral-800 rounded-lg disabled:opacity-50"
+                              >
+                                Anterior
+                              </button>
+                              <button
+                                onClick={() => setSellerPages(prev => ({ ...prev, [seller.id]: Math.min(totalPages, currentPage + 1) }))}
+                                disabled={currentPage === totalPages}
+                                className="px-3 py-1.5 text-xs font-bold text-neutral-600 bg-neutral-100 dark:bg-neutral-800 rounded-lg disabled:opacity-50"
+                              >
+                                Siguiente
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          
+          {totalSellerPages > 1 && (
+            <div className="flex items-center justify-between mt-6 px-4">
+              <p className="text-sm text-neutral-500">
+                Página {currentSellerPage} de {totalSellerPages}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentSellerPage(p => Math.max(1, p - 1))}
+                  disabled={currentSellerPage === 1}
+                  className="px-4 py-2 text-sm font-medium text-neutral-700 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl disabled:opacity-50"
+                >
+                  Anterior
+                </button>
+                <button
+                  onClick={() => setCurrentSellerPage(p => Math.min(totalSellerPages, p + 1))}
+                  disabled={currentSellerPage === totalSellerPages}
+                  className="px-4 py-2 text-sm font-medium text-neutral-700 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl disabled:opacity-50"
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
@@ -706,6 +771,7 @@ export default function Sales() {
           </div>
         </div>
       )}
+    
     </div>
   );
 }

@@ -11,6 +11,105 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.18.0",
+    date: new Date().toISOString(),
+    changes: [
+      "Aislamiento de Configuración de Simulación: Se rediseñó el SettingsProvider para usar useAuth, lo que permite cargar en tiempo real las preferencias (tema, estilo de UI, paleta de colores) del usuario simulado.",
+      "Lógica Temporal de Preferencias en Simulación: Los cambios visuales realizados mientras el administrador simula la sesión de otro usuario son puramente en memoria, impidiendo que afecten o pisen de forma permanente la configuración propia del administrador.",
+      "Permanencia de Tarjetas de Rendimiento Comercial: Se eliminó el botón de contracción y la lógica de colapso en las tarjetas del dashboard, dejándolas completamente desplegadas de forma estática para facilitar una lectura rápida.",
+      "Mejora de Contraste en Recuperación de PIN: Se incrementó el contraste del texto en el modal de restablecimiento del PIN de seguridad en temas claros y oscuros, aplicando colores legibles y tipografía estilizada.",
+    ],
+  },
+  {
+    version: "4.17.0",
+    date: new Date().toISOString(),
+    changes: [
+      "Rediseño del módulo de Comercio-Ventas: Ahora agrupa las ventas por vendedor en tarjetas expandibles, mostrando un resumen compacto y permitiendo ver el detalle de ventas del último mes seleccionado, similar al módulo de cobranzas.",
+      "Mejora en Dashboard (Rendimiento Comercial): Se muestran únicamente los empleados con presupuestos asignados, e incluye agrupación jerárquica para supervisores de ventas y cobranzas. Las tarjetas ahora son expandibles.",
+      "Mejora de UX en pantalla de seguridad (2FA): Restablecer el PIN con el código de autenticador ya no requiere doble clic, se inicia la sesión inmediatamente tras la validación exitosa.",
+      "Corrección del estado global: Las preferencias de interfaz (modo oscuro/claro) se mantienen independientes por usuario, incluso al usar la simulación de administrador.",
+    ],
+  },
+  {
+    version: "4.16.6",
+    date: new Date().toISOString(),
+    changes: [
+      "Corrección de renderizado en modal de recuperación: Se arregló un problema que impedía visualizar correctamente el flujo de verificación 2FA al hacer clic en '¿Olvidaste tu PIN?' dentro de la pantalla de bloqueo (SecurityGuard).",
+    ],
+  },
+  {
+    version: "4.16.5",
+    date: new Date().toISOString(),
+    changes: [
+      "Aislamiento Absoluto de Preferencias Visuales: Se rediseñó el proceso de combinación de configuraciones para filtrar y descartar cualquier propiedad visual del documento compartido de la empresa (como tema, estilo de UI, paleta cromática de acento, tipografía, ubicación del dock, etc.).",
+      "Independencia Completa por Usuario: Ahora todas las opciones de personalización visual de la interfaz se determinan y cargan exclusivamente desde la colección individual de cada usuario ('userSettings'), asegurando que no haya herencia ni contaminación de estilos compartidos, y solucionando el parpadeo o reversión de estilos al cambiar entre Classic, Glasmorfismo y Liquid Glass."
+    ],
+  },
+
+  {
+    version: "4.16.4",
+    date: new Date().toISOString(),
+    changes: [
+      "Optimización de persistencia y separación de UI: Se corrigió el problema de resincronización de preferencias donde el tema visual y estilo de UI del usuario individual volvían erróneamente a los valores por defecto o globales.",
+      "Aislamiento de Escrituras en Firestore: Se separó la lógica de escritura para que los cambios de interfaz (tema, glasmorfismo, liquid-glass, paleta de colores) se guarden exclusivamente en la colección 'userSettings', evitando que las actualizaciones globales de la empresa pisen las preferencias individuales."
+    ],
+  },
+
+  {
+    version: "4.16.3",
+    date: new Date().toISOString(),
+    changes: [
+      "Corrección de Permisos en Base de Datos: Se ajustaron las reglas de seguridad de Firestore para permitir el acceso correcto a los ajustes visuales y preferencias personales de la interfaz por usuario.",
+      "Separación de Configuraciones UI: Cada usuario dentro de la misma empresa ahora puede mantener su propia personalización visual (tema oscuro, estilo cristal, paleta de colores) sin afectar al resto del equipo.",
+      "Ajuste en la fórmula de alerta inteligente de inventario para préstamos activos: Cálculo dinámico basado en límite mínimo: Math.round((límite / 2) + 0.1)."
+    ],
+  },
+
+  {
+    version: "4.13.4",
+    date: new Date().toISOString(),
+    changes: [
+      "Corrección de Permisos en Base de Datos: Se ajustaron las reglas de seguridad de Firestore para permitir que los administradores puedan consultar correctamente el registro de errores del sistema sin encontrar alertas de acceso denegado."
+    ],
+  },
+  {
+    version: "4.13.3",
+    date: new Date().toISOString(),
+    changes: [
+      "Autenticación de 2 Factores (2FA): Se integró el soporte para Google Authenticator, permitiendo a los usuarios configurar desde el módulo de Configuración-Seguridad una llave de autenticación TOTP.",
+      "Recuperación de PIN Segura: Se añadió la opción de restablecer el PIN desde la pantalla de bloqueo de sesión, utilizando el código de 6 dígitos generado por Google Authenticator."
+    ],
+  },
+  {
+    version: "4.13.2",
+    date: new Date().toISOString(),
+    changes: [
+      "Optimización de Interfaz de Novedades: Se ajustó el modal de actualizaciones recientes para ser desplazable (scrollable), asegurando que el botón 'Continuar a la Plataforma' siempre sea visible en pantallas móviles.",
+      "Seguridad de Autenticación Mejorada: Se actualizaron todos los campos de entrada de PIN en el sistema para deshabilitar autocompletado y evitar que gestores de contraseñas interfieran o guarden códigos.",
+      "Sistema de Bloqueo Progresivo: Se implementó un temporizador de bloqueo en la pantalla de ingreso; tras 3 intentos fallidos, el acceso se bloquea progresivamente duplicando el tiempo (iniciando en 1 minuto y topando a un máximo de 3 días)."
+    ],
+  },
+  {
+    version: "4.13.1",
+    date: new Date().toISOString(),
+    changes: [
+      "Unificación de Copias de Seguridad: Se eliminó el botón redundante de exportación de reporte en el explorador de pagos (Finanzas - Consultas), centralizando todas las operaciones de respaldo de datos en el panel de Configuración.",
+      "Respaldo Completo de Base de Datos: Se mejoró el sistema de exportación y restauración para incluir las 13 colecciones completas de la base de datos (empleados, cheques, ventas, cobranzas, artículos, facturas, beneficiarios, presupuestos, bodegas, inventarios de bodegas, préstamos, transferencias y ventas de inventario).",
+      "Soporte Multitenant en Simulaciones: Se optimizó el filtrado por inquilino (enterpriseId/userId) para asegurar que, al simular una sesión como Super-Administrador, los respaldos descargados y restaurados correspondan estrictamente a los datos del usuario simulado.",
+      "Relación de Datos en Reportes: Se optimizó el reporte de Excel para vincular correctamente los cheques con sus números de factura reales y los artículos de inventario con las cantidades distribuidas por bodega."
+    ],
+  },
+  {
+    version: "4.13.0",
+    date: new Date().toISOString(),
+    changes: [
+      "Auto-bloqueo de Sesión: Se implementó un detector de inactividad que monitorea los eventos del usuario y bloquea automáticamente la terminal si se supera el tiempo establecido.",
+      "Optimización de Interfaz: Se removió el ícono duplicado de Usuario en el dock de navegación inferior para evitar redundancias con la opción de Configuración.",
+      "Exportación en Excel Avanzada: Ahora los respaldos en Excel cuentan con hojas estructuradas (Empleados, Cheques, Ventas, Cobranza, Inventario) y datos correctamente formateados de acuerdo con las especificaciones.",
+      "Seguridad de PIN Mejorada: Se rediseñó el flujo de actualización de PIN, requiriendo validación previa del PIN actual y doble confirmación del nuevo PIN para prevenir alteraciones no autorizadas."
+    ],
+  },
+  {
     version: "4.12.2",
     date: new Date().toISOString(),
     changes: [

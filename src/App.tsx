@@ -16,7 +16,6 @@ const CheckSearch = lazy(() => import('./pages/CheckSearch'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const Employees = lazy(() => import('./pages/Employees'));
-const Budgets = lazy(() => import('./pages/Budgets'));
 const Sales = lazy(() => import('./pages/Sales'));
 const Collections = lazy(() => import('./pages/Collections'));
 const Inventory = lazy(() => import('./pages/Inventory'));
@@ -49,8 +48,7 @@ export default function App() {
                     <Route path="/sales" element={<SecurityGuard><Sales /></SecurityGuard>} />
                     <Route path="/collections" element={<SecurityGuard><Collections /></SecurityGuard>} />
                     <Route path="/employees" element={<SecurityGuard><Employees /></SecurityGuard>} />
-                    <Route path="/budgets" element={<SecurityGuard><Budgets /></SecurityGuard>} />
-                    <Route path="/inventory/*" element={<SecurityGuard><Inventory /></SecurityGuard>} />
+                                        <Route path="/inventory/*" element={<SecurityGuard><Inventory /></SecurityGuard>} />
                     <Route path="/settings" element={<SecurityGuard><Settings /></SecurityGuard>} />
                     <Route path="/admin/*" element={<SecurityGuard><AdminPanel /></SecurityGuard>} />
                     <Route path="*" element={<SecurityGuard><NotFound /></SecurityGuard>} />

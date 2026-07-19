@@ -14,7 +14,7 @@ import {
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { 
-  AlertTriangle, Bell, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, 
+  AlertTriangle, Bell, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronUp, ChevronDown, 
   ChevronRight, ArrowUpRight, TrendingUp, DollarSign, BarChart3, PieChart
 } from 'lucide-react';
 import jsPDF from "jspdf";
@@ -150,25 +150,73 @@ export default function Dashboard() {
         return time >= parseISO(startOfMonthStr).getTime() && time <= parseISO(endOfMonthStr).getTime();
       });
 
-      const commerceArray = employees.map(emp => {
-        const empBudgets = budgets.filter(b => b.employeeId === emp.id);
-        const sBudget = empBudgets.reduce((acc, curr) => acc + (curr.salesBudget || 0), 0);
-        const cBudget = empBudgets.reduce((acc, curr) => acc + (curr.collectionsBudget || 0), 0);
-        
-        const empSales = sales.filter(s => s.employeeId === emp.id);
-        const totalSales = empSales.filter(s => !s.isMoto).reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
-        const salesContado = empSales.filter(s => !s.isMoto && s.type === 'contado').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
-        const salesCredito = empSales.filter(s => !s.isMoto && s.type === 'credito').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
-        const motoUnits = empSales.filter(s => s.isMoto).length;
-        const motoCombustion = empSales.filter(s => s.isMoto && s.motoType === 'combustion').length;
-        const motoElectric = empSales.filter(s => s.isMoto && s.motoType === 'electrico').length;
-        const motosContado = empSales.filter(s => s.isMoto && s.type === 'contado').length;
-        const motosCredito = empSales.filter(s => s.isMoto && s.type === 'credito').length;
-        const motosContadoVal = empSales.filter(s => s.isMoto && s.type === 'contado').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
-        const motosCreditoVal = empSales.filter(s => s.isMoto && s.type === 'credito').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
 
-        const empColls = colls.filter(c => c.employeeId === emp.id);
-        const totalCollections = empColls.reduce((acc, curr) => acc + (curr.totalCollected || 0), 0);
+      // Calcular sumas globales para los supervisores
+      const globalSalesBudget = employees.filter(e => !e.role.startsWith('supervisor')).reduce((sum, e) => sum + budgets.filter(b => b.employeeId === e.id).reduce((a, b) => a + (b.salesBudget || 0), 0), 0);
+      const globalCollBudget = employees.filter(e => !e.role.startsWith('supervisor')).reduce((sum, e) => sum + budgets.filter(b => b.employeeId === e.id).reduce((a, b) => a + (b.collectionsBudget || 0), 0), 0);
+      
+      const globalSales = sales.filter(s => !s.isMoto).reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
+      const globalSalesContado = sales.filter(s => !s.isMoto && s.type === 'contado').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
+      const globalSalesCredito = sales.filter(s => !s.isMoto && s.type === 'credito').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
+      const globalMotoUnits = sales.filter(s => s.isMoto).length;
+      const globalMotoComb = sales.filter(s => s.isMoto && s.motoType === 'combustion').length;
+      const globalMotoElec = sales.filter(s => s.isMoto && s.motoType === 'electrico').length;
+      const globalMotosCont = sales.filter(s => s.isMoto && s.type === 'contado').length;
+      const globalMotosCred = sales.filter(s => s.isMoto && s.type === 'credito').length;
+      const globalMotosContVal = sales.filter(s => s.isMoto && s.type === 'contado').reduce((a, c) => a + (c.totalValue || 0), 0);
+      const globalMotosCredVal = sales.filter(s => s.isMoto && s.type === 'credito').reduce((a, c) => a + (c.totalValue || 0), 0);
+      
+      const globalColls = colls.reduce((acc, curr) => acc + (curr.totalCollected || 0), 0);
+
+      const commerceArray = employees.map(emp => {
+
+        const isSupervisor = emp.role && emp.role.startsWith('supervisor');
+        const canSell = emp.role === 'vendedor' || emp.role === 'ambos' || emp.role === 'supervisor_ventas' || emp.role === 'supervisor_general';
+        const canCollect = emp.role === 'cobrador' || emp.role === 'ambos' || emp.role === 'supervisor_cobranza' || emp.role === 'supervisor_general';
+
+        const empBudgets = budgets.filter(b => b.employeeId === emp.id);
+        let sBudget = empBudgets.reduce((acc, curr) => acc + (curr.salesBudget || 0), 0);
+        let cBudget = empBudgets.reduce((acc, curr) => acc + (curr.collectionsBudget || 0), 0);
+
+        let totalSales = 0, salesContado = 0, salesCredito = 0;
+        let motoUnits = 0, motoCombustion = 0, motoElectric = 0;
+        let motosContado = 0, motosCredito = 0, motosContadoVal = 0, motosCreditoVal = 0;
+        let totalCollections = 0;
+
+        if (isSupervisor) {
+          if (canSell) {
+             sBudget = sBudget || globalSalesBudget;
+             totalSales = globalSales;
+             salesContado = globalSalesContado;
+             salesCredito = globalSalesCredito;
+             motoUnits = globalMotoUnits;
+             motoCombustion = globalMotoComb;
+             motoElectric = globalMotoElec;
+             motosContado = globalMotosCont;
+             motosCredito = globalMotosCred;
+             motosContadoVal = globalMotosContVal;
+             motosCreditoVal = globalMotosCredVal;
+          }
+          if (canCollect) {
+             cBudget = cBudget || globalCollBudget;
+             totalCollections = globalColls;
+          }
+        } else {
+          const empSales = sales.filter(s => s.employeeId === emp.id);
+          totalSales = empSales.filter(s => !s.isMoto).reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
+          salesContado = empSales.filter(s => !s.isMoto && s.type === 'contado').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
+          salesCredito = empSales.filter(s => !s.isMoto && s.type === 'credito').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
+          motoUnits = empSales.filter(s => s.isMoto).length;
+          motoCombustion = empSales.filter(s => s.isMoto && s.motoType === 'combustion').length;
+          motoElectric = empSales.filter(s => s.isMoto && s.motoType === 'electrico').length;
+          motosContado = empSales.filter(s => s.isMoto && s.type === 'contado').length;
+          motosCredito = empSales.filter(s => s.isMoto && s.type === 'credito').length;
+          motosContadoVal = empSales.filter(s => s.isMoto && s.type === 'contado').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
+          motosCreditoVal = empSales.filter(s => s.isMoto && s.type === 'credito').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
+
+          const empColls = colls.filter(c => c.employeeId === emp.id);
+          totalCollections = empColls.reduce((acc, curr) => acc + (curr.totalCollected || 0), 0);
+        }
 
         return {
           employee: emp,
@@ -184,11 +232,12 @@ export default function Dashboard() {
           motosContado,
           motosCredito,
           motosContadoVal,
-          motosCreditoVal
+          motosCreditoVal,
+          isSupervisor
         };
       });
 
-      setAllCommerceData(commerceArray);
+      setAllCommerceData(commerceArray.filter(c => c.salesBudget > 0 || c.collectionsBudget > 0));
 
       const myEmp = commerceArray.find(c => c.employee.email === user.email);
       setCommerceData(myEmp || null);
@@ -1332,122 +1381,26 @@ const handleGenerateAdvancedReport = async (reportType: 'pdf' | 'excel') => {
 
 
 }
-function GlobalCommerceCard({ allData }: { allData: any[] }) {
-  const employeesWithSalesBudget = allData.filter(d => d.salesBudget > 0).length;
-  const employeesWithCollBudget = allData.filter(d => d.collectionsBudget > 0).length;
-  const totalSalesBudget = allData.reduce((acc, curr) => acc + curr.salesBudget, 0);
-  const totalCollBudget = allData.reduce((acc, curr) => acc + curr.collectionsBudget, 0);
-  
-  const totalSales = allData.reduce((acc, curr) => acc + curr.totalSales, 0);
-  const totalColl = allData.reduce((acc, curr) => acc + curr.totalCollections, 0);
-  const totalMotos = allData.reduce((acc, curr) => acc + curr.motoUnits, 0);
-  
-  const totalMotosContado = allData.reduce((acc, curr) => acc + curr.motosContado, 0);
-  const totalMotosCredito = allData.reduce((acc, curr) => acc + curr.motosCredito, 0);
-  const totalMotosValContado = allData.reduce((acc, curr) => acc + curr.motosContadoVal, 0);
-  const totalMotosValCredito = allData.reduce((acc, curr) => acc + curr.motosCreditoVal, 0);
-  const totalMotosVal = totalMotosValContado + totalMotosValCredito;
-
-  const salesPct = totalSalesBudget > 0 ? (totalSales / totalSalesBudget) * 100 : 0;
-  const collPct = totalCollBudget > 0 ? (totalColl / totalCollBudget) * 100 : 0;
-
-  return (
-    <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-6 shadow-sm">
-      <h3 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center gap-2 mb-4">
-        <Target className="w-5 h-5 text-indigo-500" />
-        Resumen Global
-        <span className="ml-2 px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300">
-          Toda la empresa
-        </span>
-      </h3>
-      <div className="space-y-6">
-        <div className="space-y-2">
-          <div className="flex justify-between items-end">
-            <div>
-              <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Ventas Netas Globales</p>
-              <div className="flex items-baseline gap-2">
-                <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-                  ${totalSales.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                </p>
-                <p className="text-sm text-neutral-500">/ ${totalSalesBudget.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <span className={`text-lg font-bold ${salesPct >= 100 ? 'text-emerald-500' : 'text-neutral-900 dark:text-white'}`}>
-                {salesPct.toFixed(1)}%
-              </span>
-            </div>
-          </div>
-          <div className="w-full bg-neutral-100 dark:bg-neutral-800 rounded-full h-2">
-            <div 
-              className={`h-2 rounded-full ${salesPct >= 100 ? 'bg-emerald-500' : 'bg-indigo-500'}`} 
-              style={{ width: `${Math.min(salesPct, 100)}%` }} 
-            />
-          </div>
-          <div className="pt-4 grid grid-cols-2 gap-4 text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-lg border border-neutral-100 dark:border-neutral-800">
-            <div>
-              <p className="font-semibold text-neutral-500 uppercase">Artículos Netos</p>
-              <ul className="mt-1 space-y-0.5">
-                <li>Contado: ${allData.reduce((acc, curr) => acc + curr.salesContado, 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</li>
-                <li>Crédito: ${allData.reduce((acc, curr) => acc + curr.salesCredito, 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</li>
-              </ul>
-            </div>
-            <div>
-              <p className="font-semibold text-neutral-500 uppercase flex items-center gap-1"><Bike className="w-3 h-3"/> Motos ({totalMotos} uds)</p>
-              <ul className="mt-1 space-y-0.5">
-                <li>Contado ({totalMotosContado}): ${totalMotosValContado.toLocaleString('en-US', {minimumFractionDigits: 2})}</li>
-                <li>Crédito ({totalMotosCredito}): ${totalMotosValCredito.toLocaleString('en-US', {minimumFractionDigits: 2})}</li>
-                <li>Total: <span className="font-bold text-neutral-900 dark:text-white">${totalMotosVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex justify-between items-end">
-            <div>
-              <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Cobranzas Globales</p>
-              <div className="flex items-baseline gap-2">
-                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                  ${totalColl.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                </p>
-                <p className="text-sm text-neutral-500">/ ${totalCollBudget.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <span className={`text-lg font-bold ${collPct >= 100 ? 'text-emerald-500' : 'text-neutral-900 dark:text-white'}`}>
-                {collPct.toFixed(1)}%
-              </span>
-            </div>
-          </div>
-          <div className="w-full bg-neutral-100 dark:bg-neutral-800 rounded-full h-2">
-            <div 
-              className={`h-2 rounded-full ${collPct >= 100 ? 'bg-emerald-500' : 'bg-emerald-400'}`} 
-              style={{ width: `${Math.min(collPct, 100)}%` }} 
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function CommerceCard({ data }: { data: any; key?: any }) {
   const salesPct = data.salesBudget > 0 ? (data.totalSales / data.salesBudget) * 100 : 0;
   const collPct = data.collectionsBudget > 0 ? (data.totalCollections / data.collectionsBudget) * 100 : 0;
   
-  const canSell = data.employee.role === 'vendedor' || data.employee.role === 'ambos';
-  const canCollect = data.employee.role === 'cobrador' || data.employee.role === 'ambos';
+  const canSell = data.employee.role === 'vendedor' || data.employee.role === 'ambos' || data.employee.role === 'supervisor_ventas' || data.employee.role === 'supervisor_general';
+  const canCollect = data.employee.role === 'cobrador' || data.employee.role === 'ambos' || data.employee.role === 'supervisor_cobranza' || data.employee.role === 'supervisor_general';
+  
+  const isSupervisor = data.isSupervisor;
 
   return (
     <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-6 shadow-sm">
-      <h3 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center gap-2 mb-4">
-        <User className="w-5 h-5 text-neutral-400" />
-        {data.employee.name} {data.employee.lastName}
-        <span className="ml-2 px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500">
-          {data.employee.role}
-        </span>
-      </h3>
+      <div className="flex justify-between items-start mb-4">
+        <h3 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+          <User className="w-5 h-5 text-neutral-400" />
+          {data.employee.name} {data.employee.lastName}
+          <span className={"ml-2 px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-full " + (isSupervisor ? "bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500")}>
+            {isSupervisor ? "Supervisor: " : ""}{data.employee.role.replace('supervisor_', '')}
+          </span>
+        </h3>
+      </div>
       <div className="space-y-6">
         {canSell && (
           <div className="space-y-2">
@@ -1473,7 +1426,8 @@ function CommerceCard({ data }: { data: any; key?: any }) {
                 style={{ width: `${Math.min(salesPct, 100)}%` }} 
               />
             </div>
-            <div className="pt-3 grid grid-cols-2 gap-4 text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-lg border border-neutral-100 dark:border-neutral-800">
+            
+            <div className="pt-3 grid grid-cols-2 gap-4 text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-lg border border-neutral-100 dark:border-neutral-800 mt-2 animate-in fade-in slide-in-from-top-2">
               <div>
                 <p className="font-semibold text-neutral-500 uppercase">Artículos Netos</p>
                 <ul className="mt-1 space-y-0.5">

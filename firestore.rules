@@ -252,6 +252,13 @@ service cloud.firestore {
     }
 
     match /settings/{userId} {
+      allow read: if isVerified() && (
+        isOwnerOrAdmin(userId) || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.enterpriseId == userId)
+      );
+      allow write: if isOwnerOrAdmin(userId);
+    }
+    match /userSettings/{userId} {
       allow read, write: if isOwnerOrAdmin(userId);
     }
 
@@ -263,6 +270,11 @@ service cloud.firestore {
     match /auditLogs/{id} {
       allow create: if isVerified() && isValidAudit(incoming()) && isValidId(id);
       allow get, list: if isAdmin();
+    }
+
+    match /system_errors/{id} {
+      allow create: if true; // Allow client-side error reporting
+      allow read, update, delete: if isAdmin();
     }
   }
 }

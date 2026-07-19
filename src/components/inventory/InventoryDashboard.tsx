@@ -52,7 +52,7 @@ export default function InventoryDashboard() {
         collection(db, 'transfers'), 
         where('userId', '==', currentEnterpriseId), 
         orderBy('timestamp', 'desc'),
-        limit(3)
+        // limit(3) removed to calculate full stock for commercial houses
       );
       const transSnap = await getDocs(transQ);
       const transList = transSnap.docs.map(doc => ({
@@ -102,6 +102,31 @@ export default function InventoryDashboard() {
   // Aggregations
   const lowStockArticles = articles.filter(art => art.quantity <= art.minStockAlert);
   const totalArticlesCount = articles.reduce((acc, art) => acc + art.quantity, 0);
+  
+  // Calculate Commercial House Stock
+  const houseStock: Record<string, Record<string, number>> = {};
+  recentLoansReturns.forEach(lr => {
+    const house = lr.commercialHouse;
+    if (!houseStock[house]) houseStock[house] = {};
+    
+    lr.articles.forEach(art => {
+      if (!houseStock[house][art.articleId]) houseStock[house][art.articleId] = 0;
+      if (lr.type === 'RETURN') {
+        // Egreso: went to commercial house
+        houseStock[house][art.articleId] += art.quantity;
+      } else if (lr.type === 'LOAN') {
+        // Ingreso: came back from commercial house
+        houseStock[house][art.articleId] -= art.quantity;
+      }
+    });
+  });
+
+  // Filter out empty stocks
+  const activeHouseStocks = Object.entries(houseStock).map(([house, stock]) => {
+    const activeArticles = Object.entries(stock).filter(([_, qty]) => qty > 0);
+    return { house, articles: activeArticles };
+  }).filter(h => h.articles.length > 0);
+
   const activeLoans = recentLoansReturns.filter(l => l.type === 'LOAN');
   const salesTodayCount = recentSales.filter(s => isToday(new Date(s.timestamp))).length;
 
@@ -227,145 +252,55 @@ export default function InventoryDashboard() {
           <div className="bg-white dark:bg-neutral-900 p-8 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm space-y-6">
             <div className="flex items-center gap-2.5">
               <ShoppingBag className="w-5 h-5 text-indigo-500" />
-              <h3 className="text-base font-extrabold text-neutral-950 dark:text-neutral-50 uppercase tracking-tight">Préstamos Recientes de Casas Comerciales</h3>
+              <h3 className="text-base font-extrabold text-neutral-950 dark:text-neutral-50 uppercase tracking-tight">Stock en Casas Comerciales</h3>
             </div>
-
-            {activeLoans.length === 0 ? (
+            {activeHouseStocks.length === 0 ? (
               <div className="py-6 text-center text-xs font-semibold text-neutral-400 bg-neutral-50 dark:bg-neutral-800/20 rounded-2xl border border-dashed border-neutral-200 dark:border-neutral-800">
-                No hay préstamos activos registrados recientemente.
+                No hay stock actualmente en préstamo en casas comerciales.
               </div>
             ) : (
               <div className="space-y-4">
-                {activeLoans.map(loan => (
-                  <div key={loan.id} className="p-4 bg-neutral-50 dark:bg-neutral-800/20 border border-neutral-100 dark:border-neutral-800 rounded-2xl space-y-3">
-                    <div className="flex justify-between items-start border-b border-neutral-100 dark:border-neutral-800 pb-2">
-                      <div>
-                        <span className="text-xs font-black text-neutral-950 dark:text-neutral-50 uppercase tracking-tight block">{loan.commercialHouse}</span>
-                        <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider block">Entrega: {loan.personName}</span>
-                      </div>
-                      <span className="text-[9px] font-bold text-neutral-400">{safeFormatDate(loan.timestamp)}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {loan.articles.map((art, idx) => (
-                        <span key={idx} className="px-2.5 py-1 bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-lg text-[10px] font-bold text-neutral-700 dark:text-neutral-300">
-                          {art.name} ({art.quantity} uds)
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-        </div>
-
-        {/* Right Side: Warehouses and active inventory */}
-        <div className="lg:col-span-6 space-y-8">
-          
-          {/* Active Warehouses Inventory summary */}
-          <div className="bg-white dark:bg-neutral-900 p-8 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm space-y-6">
-            <div className="flex items-center gap-2.5">
-              <Home className="w-5 h-5 text-indigo-500" />
-              <h3 className="text-base font-extrabold text-neutral-950 dark:text-neutral-50 uppercase tracking-tight">Bodegas Activas e Inventario</h3>
-            </div>
-
-            {warehouses.length === 0 ? (
-              <div className="py-6 text-center text-xs font-semibold text-neutral-400 bg-neutral-50 dark:bg-neutral-800/20 rounded-2xl border border-dashed border-neutral-200 dark:border-neutral-800">
-                No hay bodegas creadas aún en el sistema.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {warehouses.map(wh => {
-                  const whStock = inventories.filter(inv => inv.warehouseId === wh.id && inv.quantity > 0);
-                  const totalUds = whStock.reduce((acc, i) => acc + i.quantity, 0);
-
+                {activeHouseStocks.map(({ house, articles: houseArts }) => {
+                  const hasAlert = houseArts.some(([artId, _qty]) => {
+                    const article = articles.find(a => a.id === artId);
+                    if (!article) return false;
+                    const alertThreshold = Math.round((article.minStockAlert / 2) + 0.1);
+                    return article.quantity <= alertThreshold;
+                  });
                   return (
-                    <div key={wh.id} className="p-5 bg-neutral-50 dark:bg-neutral-800/20 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-3">
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-9 h-9 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                            <Home className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <span className="text-xs font-black text-neutral-950 dark:text-neutral-50 uppercase tracking-tight block">{wh.name}</span>
-                            <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider block">Resp: {wh.assignedPerson}</span>
-                          </div>
-                        </div>
-                        <span className="px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-xs font-black rounded-lg">
-                          {totalUds} uds totales
-                        </span>
-                      </div>
-
-                      {whStock.length === 0 ? (
-                        <p className="text-[10px] text-neutral-400 italic">Bodega actualmente vacía.</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5 pt-1">
-                          {whStock.map(inv => {
-                            const art = articles.find(a => a.id === inv.articleId);
-                            if (!art) return null;
-                            return (
-                              <span 
-                                key={inv.id} 
-                                className="px-2 py-1 bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-lg text-[9px] font-bold text-neutral-600 dark:text-neutral-400 uppercase"
-                              >
-                                {art.name}: <strong>{inv.quantity}</strong>
-                              </span>
-                            );
-                          })}
+                    <div key={house} className={`p-4 bg-neutral-50 dark:bg-neutral-800/20 border ${hasAlert ? 'border-amber-400 dark:border-amber-600' : 'border-neutral-100 dark:border-neutral-800'} rounded-2xl space-y-3 relative overflow-hidden`}>
+                      {hasAlert && (
+                        <div className="absolute top-0 right-0 bg-amber-500 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-bl-xl shadow-sm flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          ¡Alerta: Requerido!
                         </div>
                       )}
+                      <div className="flex justify-between items-start border-b border-neutral-100 dark:border-neutral-800 pb-2 pt-1">
+                        <div>
+                          <span className="text-xs font-black text-neutral-950 dark:text-neutral-50 uppercase tracking-tight block">{house}</span>
+                          <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider block">Artículos en préstamo activo</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {houseArts.map(([artId, qty]) => {
+                          const article = articles.find(a => a.id === artId);
+                          if (!article) return null;
+                          const alertThreshold = Math.round((article.minStockAlert / 2) + 0.1);
+                          const isWarning = article.quantity <= alertThreshold;
+                          return (
+                            <span key={artId} className={`px-2.5 py-1 bg-white dark:bg-neutral-900 border ${isWarning ? 'border-amber-300 dark:border-amber-700/50 text-amber-700 dark:text-amber-400' : 'border-neutral-100 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300'} rounded-lg text-[10px] font-bold`} title={isWarning ? "Stock interno bajo: " + article.quantity + " uds. (Límite: " + alertThreshold + " uds)" : ""}>
+                              {article.name} ({qty} uds)
+                            </span>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })}
               </div>
             )}
           </div>
-
-          {/* Recent Operations Summary */}
-          <div className="bg-white dark:bg-neutral-900 p-8 rounded-[2.5rem] border border-neutral-100 dark:border-neutral-800 shadow-sm space-y-6">
-            <div className="flex items-center gap-2.5">
-              <TrendingUp className="w-5 h-5 text-indigo-500" />
-              <h3 className="text-base font-extrabold text-neutral-950 dark:text-neutral-50 uppercase tracking-tight">Movimientos de Hoy</h3>
-            </div>
-
-            <div className="space-y-4">
-              {recentSales.length === 0 && recentTransfers.length === 0 && recentLoansReturns.length === 0 ? (
-                <div className="py-6 text-center text-xs font-semibold text-neutral-400 bg-neutral-50 dark:bg-neutral-800/20 rounded-2xl border border-dashed border-neutral-200 dark:border-neutral-800">
-                  No se registran movimientos recientes de almacén el día de hoy.
-                </div>
-              ) : (
-                <div className="divide-y divide-neutral-100 dark:divide-neutral-800 space-y-3.5 pt-1">
-                  {recentSales.slice(0, 2).map(sale => (
-                    <div key={sale.id} className="flex justify-between items-center text-xs pt-3 first:pt-0">
-                      <div>
-                        <span className="font-bold text-neutral-800 dark:text-neutral-200 uppercase block">Venta a: {sale.clientName}</span>
-                        <span className="text-[9px] font-medium text-neutral-400 uppercase tracking-wider block">Vendedor: {sale.sellerName}</span>
-                      </div>
-                      <span className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-extrabold rounded">
-                        VENTA
-                      </span>
-                    </div>
-                  ))}
-
-                  {recentTransfers.slice(0, 2).map(trans => (
-                    <div key={trans.id} className="flex justify-between items-center text-xs pt-3">
-                      <div>
-                        <span className="font-bold text-neutral-800 dark:text-neutral-200 uppercase block">Traslado de {trans.articles.length} artículos</span>
-                        <span className="text-[9px] font-medium text-neutral-400 uppercase tracking-wider block">De: {trans.fromWarehouseName} → A: {trans.toWarehouseName}</span>
-                      </div>
-                      <span className="px-2 py-0.5 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 font-extrabold rounded">
-                        TRASLADO
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
         </div>
-
       </div>
     </div>
   );

@@ -27,8 +27,8 @@ export default function ArticlesTab() {
     barcode: '',
     requiresSeries: false,
     seriesInput: '',
-    minStockAlert: 5,
-    initialQuantity: 0,
+    minStockAlert: "5" as string | number,
+    initialQuantity: "" as string | number,
     initialWarehouseId: ''
   });
   
@@ -609,7 +609,7 @@ if (!formData.category.trim()) {
                       min={0}
                       placeholder="Ej. 5"
                       value={formData.minStockAlert}
-                      onChange={(e) => setFormData({ ...formData, minStockAlert: Math.max(0, parseInt(e.target.value) || 0) })}
+                      onChange={(e) => setFormData({ ...formData, minStockAlert: e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value) || 0) })}
                       className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all"
                     />
                   </div>
@@ -631,8 +631,8 @@ if (!formData.category.trim()) {
                           required
                           placeholder="0"
                           value={formData.initialQuantity}
-                          onChange={(e) => setFormData({ ...formData, initialQuantity: Math.max(0, parseInt(e.target.value) || 0) })}
-                          className="w-full px-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all"
+                          onChange={(e) => setFormData({ ...formData, initialQuantity: e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value) || 0) })}
+                          className="w-full px-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-neutral-900 dark:text-neutral-50 transition-all relative z-10 cursor-pointer "
                         />
                       </div>
 

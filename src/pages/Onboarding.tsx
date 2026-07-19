@@ -110,10 +110,10 @@ export default function Onboarding() {
                   <input
                     id="pin"
                     name="pin"
-                    type="password"
+                    type="password" autoComplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" inputMode="numeric" pattern="[0-9]*"
                     required
                     maxLength={6}
-                    pattern="\d{6}"
+                    
                     value={formData.pin}
                     onChange={(e) => setFormData({ ...formData, pin: e.target.value.replace(/\D/g, '') })}
                     className="w-full bg-neutral-900 border border-neutral-800 rounded-2xl px-5 py-5 text-white text-center text-2xl tracking-[0.6em] font-black focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all placeholder:text-neutral-700"

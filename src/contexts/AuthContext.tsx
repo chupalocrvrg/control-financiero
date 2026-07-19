@@ -24,6 +24,8 @@ export interface UserProfile {
   enterpriseId?: string;
   photoUrl?: string;
   hasCompletedOnboarding?: boolean;
+  totpSecret?: string;
+  totpEnabled?: boolean;
 }
 
 interface AuthContextType {
@@ -164,6 +166,34 @@ useEffect(() => {
       console.error("Error from redirect result:", error);
     });
   }, []);
+
+  useEffect(() => {
+    if (!sessionVerified || !profile?.pinInactivityLimit) return;
+    
+    let inactivityTimeout: NodeJS.Timeout;
+    
+    const resetTimer = () => {
+      clearTimeout(inactivityTimeout);
+      inactivityTimeout = setTimeout(() => {
+        setSessionVerified(false);
+      }, profile.pinInactivityLimit * 60000);
+    };
+
+    resetTimer();
+
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    
+    events.forEach(event => {
+      document.addEventListener(event, resetTimer, { passive: true });
+    });
+
+    return () => {
+      clearTimeout(inactivityTimeout);
+      events.forEach(event => {
+        document.removeEventListener(event, resetTimer);
+      });
+    };
+  }, [sessionVerified, profile?.pinInactivityLimit]);
 
   const login = async () => {
     const provider = new GoogleAuthProvider();
