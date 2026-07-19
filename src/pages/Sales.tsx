@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { logAudit, AuditAction } from '../lib/audit';
 import { format } from 'date-fns';
-import { isSuperAdminEmail } from '../lib/utils';
+import { isSuperAdminEmail, roundToTwo } from '../lib/utils';
 
 interface Employee {
   id: string;
@@ -386,7 +386,7 @@ export default function Sales() {
               return matchesEmp && matchesMonth;
             });
             
-            const totalValue = sellerSales.reduce((sum, s) => sum + (!s.isMoto ? (parseFloat(s.totalValue.toString()) || 0) : 0), 0);
+            const totalValue = roundToTwo(sellerSales.reduce((sum, s) => sum + (!s.isMoto ? (parseFloat(s.totalValue.toString()) || 0) : 0), 0));
             const totalMotos = sellerSales.filter(s => s.isMoto).length;
             const isExpanded = expandedSellers.has(seller.id);
             

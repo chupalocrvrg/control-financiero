@@ -25,6 +25,9 @@ export interface UserProfile {
   hasCompletedOnboarding?: boolean;
   totpSecret?: string;
   totpEnabled?: boolean;
+  failedPinAttempts?: number;
+  pinLockUntil?: string | null;
+  pinCurrentPenalty?: number;
 }
 
 interface AuthContextType {
@@ -36,7 +39,7 @@ interface AuthContextType {
   isExpired: boolean;
   login: () => Promise<void>;
   logout: () => Promise<void>;
-  verifyPin: (pin: string) => Promise<boolean>;
+  verifyPin: (pin: string) => Promise<{ success: boolean; error?: string; remainingSeconds?: number; failedAttempts?: number; lockUntil?: string | null }>;
   updateProfile: (data: Partial<UserProfile>) => Promise<void>;
   setSessionVerified: (val: boolean) => void;
   // User simulation properties (untracked in visible updates history indexes)
@@ -228,30 +231,41 @@ useEffect(() => {
   };
 
   const verifyPin = async (pin: string) => {
-    const targetUid = actualUser?.uid;
-    const targetProfile = actualProfile;
-    if (!targetUid || !targetProfile) return false;
+    const targetUid = impersonatedUser ? impersonatedUser.uid : actualUser?.uid;
+    if (!targetUid) {
+      return { success: false, error: "Usuario no autenticado." };
+    }
     
-    // For backwards compatibility during migration, check plain text, legacy unsalted hash, or salted hash
-    const hashedPin = await hashPin(pin, targetUid);
-    const legacyHashedPin = await hashPin(pin);
-    const isMatch = targetProfile.pin === hashedPin || targetProfile.pin === legacyHashedPin || targetProfile.pin === pin;
-    
-    if (isMatch) {
-      try {
-        await updateDoc(doc(db, 'users', targetUid), {
-          lastPinEntry: serverTimestamp()
-        });
+    try {
+      const response = await fetch('/api/users/verify-pin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ uid: targetUid, pin })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
         const updatedTime = new Date().toISOString();
         if (actualProfile) setActualProfile({ ...actualProfile, lastPinEntry: updatedTime });
         if (!impersonatedUser && profile) setProfile({ ...profile, lastPinEntry: updatedTime });
         setSessionVerified(true);
-        return true;
-      } catch (error) {
-        handleFirestoreError(error, OperationType.UPDATE, `users/${targetUid}`);
+        return { success: true };
+      } else {
+        return { 
+          success: false, 
+          error: data.error || 'PIN incorrecto.', 
+          remainingSeconds: data.remainingSeconds, 
+          failedAttempts: data.failedAttempts, 
+          lockUntil: data.lockUntil 
+        };
       }
+    } catch (error: any) {
+      console.error("Error al verificar PIN:", error);
+      return { success: false, error: "Error de conexión con el servidor de seguridad." };
     }
-    return false;
   };
 
   const updateProfile = async (data: Partial<UserProfile>) => {

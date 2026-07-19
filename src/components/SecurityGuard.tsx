@@ -22,6 +22,35 @@ export default function SecurityGuard({ children }: { children: React.ReactNode 
   const [confirmNewPin, setConfirmNewPin] = useState('');
   const [resetError, setResetError] = useState('');
 
+  // Synchronize Firestore server-side lockout state to local component state
+  useEffect(() => {
+    if (profile) {
+      if (profile.pinLockUntil) {
+        const serverLockUntil = new Date(profile.pinLockUntil).getTime();
+        if (serverLockUntil > Date.now()) {
+          setLockUntil(serverLockUntil);
+          localStorage.setItem('pin_lock_until', serverLockUntil.toString());
+        } else {
+          setLockUntil(0);
+          localStorage.removeItem('pin_lock_until');
+        }
+      } else {
+        setLockUntil(0);
+        localStorage.removeItem('pin_lock_until');
+      }
+
+      if (profile.failedPinAttempts !== undefined) {
+        setFailedAttempts(profile.failedPinAttempts);
+        localStorage.setItem('pin_failed_attempts', profile.failedPinAttempts.toString());
+      }
+      
+      if (profile.pinCurrentPenalty !== undefined) {
+        setCurrentPenalty(profile.pinCurrentPenalty);
+        localStorage.setItem('pin_current_penalty', profile.pinCurrentPenalty.toString());
+      }
+    }
+  }, [profile]);
+
   useEffect(() => {
     if (lockUntil > Date.now()) {
       const updateRemaining = () => {
@@ -110,16 +139,23 @@ export default function SecurityGuard({ children }: { children: React.ReactNode 
     
     setLoading(true);
     setError(false);
-    const success = await verifyPin(pin);
-    if (!success) {
+    const result = await verifyPin(pin);
+    if (!result.success) {
       setError(true);
       setPin('');
       
-      const newAttempts = failedAttempts + 1;
+      const newAttempts = result.failedAttempts !== undefined ? result.failedAttempts : (failedAttempts + 1);
       setFailedAttempts(newAttempts);
       localStorage.setItem('pin_failed_attempts', newAttempts.toString());
 
-      if (newAttempts >= 3) {
+      if (result.lockUntil) {
+        const untilTime = new Date(result.lockUntil).getTime();
+        setLockUntil(untilTime);
+        localStorage.setItem('pin_lock_until', untilTime.toString());
+        if (result.remainingSeconds) {
+          setRemainingLockTime(result.remainingSeconds);
+        }
+      } else if (newAttempts >= 3) {
         const penalty = currentPenalty;
         const maxPenalty = 3 * 24 * 60 * 60; // 3 days in seconds
         const nextPenalty = Math.min(penalty * 2, maxPenalty);
@@ -138,6 +174,7 @@ export default function SecurityGuard({ children }: { children: React.ReactNode 
       setFailedAttempts(0);
       setCurrentPenalty(60);
       setLockUntil(0);
+      setRemainingLockTime(0);
     }
     setLoading(false);
   };

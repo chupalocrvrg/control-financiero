@@ -7,6 +7,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { logAudit, AuditAction } from '../lib/audit';
 import { format, startOfMonth, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { roundToTwo } from '../lib/utils';
 
 export type EmployeeRole = 'vendedor' | 'cobrador' | 'ambos' | 'supervisor_ventas' | 'supervisor_cobranza' | 'supervisor_general';
 
@@ -226,13 +227,13 @@ export default function Employees() {
   );
 
   // Budgets calculations
-  const totalSalesBudget = employees
+  const totalSalesBudget = roundToTwo(employees
     .filter(e => ['vendedor', 'ambos'].includes(e.role))
-    .reduce((sum, e) => sum + (budgets[e.id]?.salesBudget || 0), 0);
+    .reduce((sum, e) => sum + (budgets[e.id]?.salesBudget || 0), 0));
     
-  const totalCollectionsBudget = employees
+  const totalCollectionsBudget = roundToTwo(employees
     .filter(e => ['cobrador', 'ambos'].includes(e.role))
-    .reduce((sum, e) => sum + (budgets[e.id]?.collectionsBudget || 0), 0);
+    .reduce((sum, e) => sum + (budgets[e.id]?.collectionsBudget || 0), 0));
 
   return (
     <div className="space-y-6">
