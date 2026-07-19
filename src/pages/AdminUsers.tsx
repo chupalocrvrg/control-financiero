@@ -624,19 +624,19 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
         return;
       }
 
-      console.log(`Iniciando vaciado de datos para: ${selectedUser.name} (${selectedUser.id})`);
+      if (import.meta.env.DEV) console.log(`Iniciando vaciado de datos para: ${selectedUser.name} (${selectedUser.id})`);
       
       // Fetch checks
       const checksPath = 'checks';
       const checksQ = query(collection(db, checksPath), where('userId', '==', selectedUser.id));
       const checksSnaps = await getDocs(checksQ);
-      console.log(`Encontrados ${checksSnaps.size} cheques para eliminar.`);
+      if (import.meta.env.DEV) console.log(`Encontrados ${checksSnaps.size} cheques para eliminar.`);
       
       // Fetch invoices
       const invoicesPath = 'invoices';
       const invoicesQ = query(collection(db, invoicesPath), where('userId', '==', selectedUser.id));
       const invSnaps = await getDocs(invoicesQ);
-      console.log(`Encontradas ${invSnaps.size} facturas para eliminar.`);
+      if (import.meta.env.DEV) console.log(`Encontradas ${invSnaps.size} facturas para eliminar.`);
       
       const { writeBatch } = await import('firebase/firestore');
       const batch = writeBatch(db);
@@ -650,7 +650,7 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
       });
       
       await batch.commit();
-      console.log("Batch commit completado exitosamente.");
+      if (import.meta.env.DEV) console.log("Batch commit completado exitosamente.");
       
       if (viewingUserInstance?.id === selectedUser.id) {
         setUserChecks([]);
@@ -682,7 +682,7 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
         return;
       }
 
-      console.log(`Iniciando eliminación total del usuario: ${selectedUser.name} (${selectedUser.id})`);
+      if (import.meta.env.DEV) console.log(`Iniciando eliminación total del usuario: ${selectedUser.name} (${selectedUser.id})`);
       
       const { writeBatch } = await import('firebase/firestore');
       const batch = writeBatch(db);

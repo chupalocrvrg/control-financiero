@@ -2,10 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { MessageCircle, Lock, ShieldAlert, Power, ShieldCheck, Fingerprint, Clock } from 'lucide-react';
 import { cn } from '../lib/utils';
-import * as OTPAuth from 'otpauth';
 
 export default function SecurityGuard({ children }: { children: React.ReactNode }) {
-  const { isExpired, sessionVerified, verifyPin, logout, profile, updateProfile, setSessionVerified } = useAuth();
+  const { isExpired, sessionVerified, verifyPin, logout, profile, updateProfile, setSessionVerified, user } = useAuth();
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -22,7 +21,6 @@ export default function SecurityGuard({ children }: { children: React.ReactNode 
   const [newPin, setNewPin] = useState('');
   const [confirmNewPin, setConfirmNewPin] = useState('');
   const [resetError, setResetError] = useState('');
-
 
   useEffect(() => {
     if (lockUntil > Date.now()) {
@@ -43,7 +41,6 @@ export default function SecurityGuard({ children }: { children: React.ReactNode 
     }
   }, [lockUntil]);
 
-  
   const handleResetPin = async (e: React.FormEvent) => {
     e.preventDefault();
     setResetError('');
@@ -63,24 +60,27 @@ export default function SecurityGuard({ children }: { children: React.ReactNode 
       return;
     }
     
-    const totp = new OTPAuth.TOTP({
-      issuer: 'Control Financiero',
-      label: profile?.email || 'Usuario',
-      algorithm: 'SHA1',
-      digits: 6,
-      period: 30,
-      secret: OTPAuth.Secret.fromBase32(profile.totpSecret)
-    });
-    
-    const delta = totp.validate({ token: totpCode, window: 1 });
-    if (delta === null) {
-      setResetError('Código de autenticador inválido.');
-      return;
-    }
-    
     try {
       setLoading(true);
-      await updateProfile({ pin: newPin });
+      
+      const response = await fetch('/api/users/reset-pin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          uid: user?.uid,
+          totpCode,
+          newPin
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        setResetError(data.error || 'Error al restablecer el PIN.');
+        return;
+      }
       
       // Success, login with new PIN
       // We manually set verified because the profile listener might not have updated the state yet

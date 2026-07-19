@@ -41,7 +41,7 @@ export default function PWAPrompt() {
     
     const { outcome } = await installPrompt.userChoice;
     if (outcome === 'accepted') {
-      console.log('User accepted the install prompt');
+      if (import.meta.env.DEV) console.log('User accepted the install prompt');
     }
     setInstallPrompt(null);
   };

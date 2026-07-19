@@ -115,7 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               }
             }
           } else {
-            console.log("Profile not found locally, creating client-side fallback...");
+            if (import.meta.env.DEV) console.log("Profile not found locally, creating client-side fallback...");
             const defaultProfile = {
               uid: firebaseUser.uid,
               email: firebaseUser.email || '',
@@ -294,7 +294,7 @@ useEffect(() => {
           createdAt: serverTimestamp(),
           ...dataToSave
         };
-        console.log("newProfile", newProfile); console.log("Creating new profile:", JSON.stringify(newProfile, null, 2)); await setDoc(docRef, newProfile);
+        if (import.meta.env.DEV) console.log("newProfile", newProfile); if (import.meta.env.DEV) console.log("Creating new profile:", JSON.stringify(newProfile, null, 2)); await setDoc(docRef, newProfile);
         setProfile(newProfile as unknown as UserProfile);
         if (!impersonatedUser) {
           setActualProfile(newProfile as unknown as UserProfile);

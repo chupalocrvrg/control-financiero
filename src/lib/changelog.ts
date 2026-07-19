@@ -11,6 +11,16 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.19.0",
+    date: new Date().toISOString(),
+    changes: [
+      "Refuerzo de Seguridad 2FA/TOTP: Validación del código TOTP movida íntegramente al servidor para el reseteo de PIN, impidiendo su evasión mediante manipulación de cliente.",
+      "Reglas de Firestore Endurecidas: Acceso de escritura a la colección system_errors restringido para exigir que el usuario esté autenticado y validar el esquema y tamaño del error.",
+      "Optimización de Dependencias y Scripts: Se desinstaló la librería duplicada otplib (ahora se usa OTPAuth en el cliente y servidor) y se reorganizaron los scripts de mantenimiento a la carpeta /scripts.",
+      "Limpieza de Consola (Producción): Eliminados los logs de depuración del navegador para evitar filtraciones de datos internos usando variables de entorno DEV."
+    ],
+  },
+  {
     version: "4.18.0",
     date: new Date().toISOString(),
     changes: [
@@ -624,7 +634,7 @@ export async function getDynamicVersions(): Promise<ChangelogRelease[]> {
           const vDoc = await getDoc(versionDocRef);
           if (!vDoc.exists()) {
             await saveNewVersion(v.version, v.changes);
-            console.log(`[Auto-Version] Automatically registered V${cleanV} in Firestore.`);
+            if (import.meta.env.DEV) console.log(`[Auto-Version] Automatically registered V${cleanV} in Firestore.`);
           }
         } catch (err) {
           console.error(`[Auto-Version] Failed to automatically register V${cleanV}:`, err);

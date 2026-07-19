@@ -273,7 +273,10 @@ service cloud.firestore {
     }
 
     match /system_errors/{id} {
-      allow create: if true; // Allow client-side error reporting
+      allow create: if isSignedIn() &&
+                    incoming().keys().hasOnly(['userId','userEmail','error','module','componentStack','createdAt']) &&
+                    incoming().createdAt == request.time &&
+                    incoming().error is string && incoming().error.size() < 2000;
       allow read, update, delete: if isAdmin();
     }
   }
