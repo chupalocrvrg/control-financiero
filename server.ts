@@ -409,9 +409,13 @@ async function startServer() {
       }
 
       // Valid! Update the PIN
+      const crypto = await import("crypto");
+      const pinToHash = `${uid}_${newPin}`;
+      const hashedPin = crypto.createHash("sha256").update(pinToHash).digest("hex");
+
       const nowIso = new Date().toISOString();
       await firestoreDb.collection("users").doc(uid).update({
-        pin: newPin,
+        pin: hashedPin,
         lastPinEntry: nowIso
       });
 

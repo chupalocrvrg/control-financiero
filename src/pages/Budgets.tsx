@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { logAudit, AuditAction } from '../lib/audit';
 import { format, startOfMonth, addMonths, subMonths, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { roundToTwo } from '../lib/utils';
 
 interface Employee {
   id: string;
@@ -132,8 +133,8 @@ export default function Budgets() {
     emp.lastName.toLowerCase().includes(search.toLowerCase())
   );
   
-  const totalSalesBudget = Object.values(budgets).reduce((acc: number, curr: any) => acc + (curr.salesBudget || 0), 0) as number;
-  const totalCollectionsBudget = Object.values(budgets).reduce((acc: number, curr: any) => acc + (curr.collectionsBudget || 0), 0) as number;
+  const totalSalesBudget = roundToTwo((Object.values(budgets) as Budget[]).reduce((acc: number, curr: Budget) => acc + (curr.salesBudget || 0), 0));
+  const totalCollectionsBudget = roundToTwo((Object.values(budgets) as Budget[]).reduce((acc: number, curr: Budget) => acc + (curr.collectionsBudget || 0), 0));
 
   return (
     <div className="space-y-6">

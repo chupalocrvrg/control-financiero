@@ -496,7 +496,7 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
     }
     setLoading(true);
     try {
-      const hashedPin = await hashPin(newPinValue);
+      const hashedPin = await hashPin(newPinValue, userId);
       await updateDoc(doc(db, 'users', userId), { pin: hashedPin });
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, pin: hashedPin } : u));
       if (selectedUser?.id === userId) setSelectedUser(prev => prev ? { ...prev, pin: hashedPin } : null);

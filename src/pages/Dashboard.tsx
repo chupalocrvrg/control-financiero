@@ -5,7 +5,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, roundToTwo } from '../lib/utils';
 import { CURRENT_VERSION } from '../lib/changelog';
 import { 
   format, isBefore, isToday, isTomorrow, parseISO, startOfDay, endOfMonth, 
@@ -152,21 +152,21 @@ export default function Dashboard() {
 
 
       // Calcular sumas globales para los supervisores
-      const globalSalesBudget = employees.filter(e => !e.role.startsWith('supervisor')).reduce((sum, e) => sum + budgets.filter(b => b.employeeId === e.id).reduce((a, b) => a + (b.salesBudget || 0), 0), 0);
-      const globalCollBudget = employees.filter(e => !e.role.startsWith('supervisor')).reduce((sum, e) => sum + budgets.filter(b => b.employeeId === e.id).reduce((a, b) => a + (b.collectionsBudget || 0), 0), 0);
+      const globalSalesBudget = roundToTwo(employees.filter(e => !e.role.startsWith('supervisor')).reduce((sum, e) => sum + budgets.filter(b => b.employeeId === e.id).reduce((a, b) => a + (b.salesBudget || 0), 0), 0));
+      const globalCollBudget = roundToTwo(employees.filter(e => !e.role.startsWith('supervisor')).reduce((sum, e) => sum + budgets.filter(b => b.employeeId === e.id).reduce((a, b) => a + (b.collectionsBudget || 0), 0), 0));
       
-      const globalSales = sales.filter(s => !s.isMoto).reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
-      const globalSalesContado = sales.filter(s => !s.isMoto && s.type === 'contado').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
-      const globalSalesCredito = sales.filter(s => !s.isMoto && s.type === 'credito').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
+      const globalSales = roundToTwo(sales.filter(s => !s.isMoto).reduce((acc, curr) => acc + (curr.totalValue || 0), 0));
+      const globalSalesContado = roundToTwo(sales.filter(s => !s.isMoto && s.type === 'contado').reduce((acc, curr) => acc + (curr.totalValue || 0), 0));
+      const globalSalesCredito = roundToTwo(sales.filter(s => !s.isMoto && s.type === 'credito').reduce((acc, curr) => acc + (curr.totalValue || 0), 0));
       const globalMotoUnits = sales.filter(s => s.isMoto).length;
       const globalMotoComb = sales.filter(s => s.isMoto && s.motoType === 'combustion').length;
       const globalMotoElec = sales.filter(s => s.isMoto && s.motoType === 'electrico').length;
       const globalMotosCont = sales.filter(s => s.isMoto && s.type === 'contado').length;
       const globalMotosCred = sales.filter(s => s.isMoto && s.type === 'credito').length;
-      const globalMotosContVal = sales.filter(s => s.isMoto && s.type === 'contado').reduce((a, c) => a + (c.totalValue || 0), 0);
-      const globalMotosCredVal = sales.filter(s => s.isMoto && s.type === 'credito').reduce((a, c) => a + (c.totalValue || 0), 0);
+      const globalMotosContVal = roundToTwo(sales.filter(s => s.isMoto && s.type === 'contado').reduce((a, c) => a + (c.totalValue || 0), 0));
+      const globalMotosCredVal = roundToTwo(sales.filter(s => s.isMoto && s.type === 'credito').reduce((a, c) => a + (c.totalValue || 0), 0));
       
-      const globalColls = colls.reduce((acc, curr) => acc + (curr.totalCollected || 0), 0);
+      const globalColls = roundToTwo(colls.reduce((acc, curr) => acc + (curr.totalCollected || 0), 0));
 
       const commerceArray = employees.map(emp => {
 
@@ -175,8 +175,8 @@ export default function Dashboard() {
         const canCollect = emp.role === 'cobrador' || emp.role === 'ambos' || emp.role === 'supervisor_cobranza' || emp.role === 'supervisor_general';
 
         const empBudgets = budgets.filter(b => b.employeeId === emp.id);
-        let sBudget = empBudgets.reduce((acc, curr) => acc + (curr.salesBudget || 0), 0);
-        let cBudget = empBudgets.reduce((acc, curr) => acc + (curr.collectionsBudget || 0), 0);
+        let sBudget = roundToTwo(empBudgets.reduce((acc, curr) => acc + (curr.salesBudget || 0), 0));
+        let cBudget = roundToTwo(empBudgets.reduce((acc, curr) => acc + (curr.collectionsBudget || 0), 0));
 
         let totalSales = 0, salesContado = 0, salesCredito = 0;
         let motoUnits = 0, motoCombustion = 0, motoElectric = 0;
@@ -203,19 +203,19 @@ export default function Dashboard() {
           }
         } else {
           const empSales = sales.filter(s => s.employeeId === emp.id);
-          totalSales = empSales.filter(s => !s.isMoto).reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
-          salesContado = empSales.filter(s => !s.isMoto && s.type === 'contado').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
-          salesCredito = empSales.filter(s => !s.isMoto && s.type === 'credito').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
+          totalSales = roundToTwo(empSales.filter(s => !s.isMoto).reduce((acc, curr) => acc + (curr.totalValue || 0), 0));
+          salesContado = roundToTwo(empSales.filter(s => !s.isMoto && s.type === 'contado').reduce((acc, curr) => acc + (curr.totalValue || 0), 0));
+          salesCredito = roundToTwo(empSales.filter(s => !s.isMoto && s.type === 'credito').reduce((acc, curr) => acc + (curr.totalValue || 0), 0));
           motoUnits = empSales.filter(s => s.isMoto).length;
           motoCombustion = empSales.filter(s => s.isMoto && s.motoType === 'combustion').length;
           motoElectric = empSales.filter(s => s.isMoto && s.motoType === 'electrico').length;
           motosContado = empSales.filter(s => s.isMoto && s.type === 'contado').length;
           motosCredito = empSales.filter(s => s.isMoto && s.type === 'credito').length;
-          motosContadoVal = empSales.filter(s => s.isMoto && s.type === 'contado').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
-          motosCreditoVal = empSales.filter(s => s.isMoto && s.type === 'credito').reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
+          motosContadoVal = roundToTwo(empSales.filter(s => s.isMoto && s.type === 'contado').reduce((acc, curr) => acc + (curr.totalValue || 0), 0));
+          motosCreditoVal = roundToTwo(empSales.filter(s => s.isMoto && s.type === 'credito').reduce((acc, curr) => acc + (curr.totalValue || 0), 0));
 
           const empColls = colls.filter(c => c.employeeId === emp.id);
-          totalCollections = empColls.reduce((acc, curr) => acc + (curr.totalCollected || 0), 0);
+          totalCollections = roundToTwo(empColls.reduce((acc, curr) => acc + (curr.totalCollected || 0), 0));
         }
 
         return {

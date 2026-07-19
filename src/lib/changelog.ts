@@ -11,6 +11,18 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.19.1",
+    date: new Date().toISOString(),
+    changes: [
+      "Fortalecimiento de Seguridad en Hash del PIN: Se implementó un algoritmo de hash con sal individualizada (usando el UID del usuario como sal) en el cliente y servidor, previniendo ataques de tablas precalculadas (rainbow tables).",
+      "Robustez en Inicialización de Base de Datos: Se configuró ignoreUndefinedProperties: true al inicializar Firestore y se eliminaron los campos indefinidos, eliminando posibles fallos al guardar perfiles nuevos.",
+      "Rediseño del Estado de Sesión Expirada: Se separó y acondicionó el cálculo de expiración para que no bloquee ni flashee la pantalla de suscripción vencida antes de que el perfil de usuario se cargue o resuelva completamente.",
+      "Optimización del Límite de Inactividad del PIN: Se eliminó el restrictivo control calendario de medianoche, permitiendo que la sesión continúe activa de forma lógica y transparente según el límite de minutos seleccionado por el usuario.",
+      "Centralización de Perfil por Defecto: Se extrajo la estructura de perfiles nuevos a un helper reutilizable y tipado, erradicando código duplicado e inconsistencias en la inicialización y simulación de usuarios.",
+      "Consistencia Numérica en Cálculos Financieros: Se integró el redondeo preciso roundToTwo() en sumas críticas y acumuladores reduce, previniendo discrepancias de coma flotante IEEE-754."
+    ],
+  },
+  {
     version: "4.19.0",
     date: new Date().toISOString(),
     changes: [

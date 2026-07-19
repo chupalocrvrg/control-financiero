@@ -5,8 +5,7 @@ import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firest
 import { addDays, isAfter, parseISO } from 'date-fns';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { logAudit, AuditAction } from '../lib/audit';
-import { hashPin } from '../lib/utils';
-import { isSuperAdminEmail } from '../lib/utils';
+import { hashPin, isSuperAdminEmail, createDefaultProfile } from '../lib/utils';
 
 export interface UserProfile {
   uid?: string;
@@ -110,25 +109,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const now = new Date();
               const diffMins = (now.getTime() - lastEntry.getTime()) / 60000;
               
-              if (now.toDateString() === lastEntry.toDateString() && diffMins < (data.pinInactivityLimit || 1440)) {
+              if (diffMins < (data.pinInactivityLimit || 1440)) {
                 setSessionVerified(true);
               }
             }
           } else {
             if (import.meta.env.DEV) console.log("Profile not found locally, creating client-side fallback...");
-            const defaultProfile = {
+            const defaultProfile = createDefaultProfile(firebaseUser.email || '', firebaseUser.displayName || '', {
               uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              name: firebaseUser.displayName || 'Usuario Nuevo',
-              role: (isSuperAdminEmail(firebaseUser.email) ? 'SUPERADMIN' : 'USER') as any,
-              status: 'ENABLED' as any,
-              hasCompletedOnboarding: isSuperAdminEmail(firebaseUser.email),
-              subscriptionEnd: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
               createdAt: serverTimestamp(),
-              pin: "",
-              pinInactivityLimit: 60,
               lastPinEntry: serverTimestamp()
-            };
+            });
             try {
               await setDoc(docRef, defaultProfile);
               setActualProfile(defaultProfile as unknown as UserProfile);
@@ -241,9 +232,10 @@ useEffect(() => {
     const targetProfile = actualProfile;
     if (!targetUid || !targetProfile) return false;
     
-    // For backwards compatibility during migration, check plain text or hash
-    const hashedPin = await hashPin(pin);
-    const isMatch = targetProfile.pin === hashedPin || targetProfile.pin === pin;
+    // For backwards compatibility during migration, check plain text, legacy unsalted hash, or salted hash
+    const hashedPin = await hashPin(pin, targetUid);
+    const legacyHashedPin = await hashPin(pin);
+    const isMatch = targetProfile.pin === hashedPin || targetProfile.pin === legacyHashedPin || targetProfile.pin === pin;
     
     if (isMatch) {
       try {
@@ -269,7 +261,7 @@ useEffect(() => {
     // Hash PIN if it is being updated
     const dataToSave = { ...data };
     if (dataToSave.pin) {
-      dataToSave.pin = await hashPin(dataToSave.pin);
+      dataToSave.pin = await hashPin(dataToSave.pin, activeUid);
     }
     
     const docRef = doc(db, 'users', activeUid);
@@ -278,23 +270,18 @@ useEffect(() => {
       
       if (!docSnap.exists()) {
         const activeEmail = impersonatedUser ? impersonatedUser.email : (actualUser?.email || '');
-        const isAdminEmail = isSuperAdminEmail(activeEmail);
-        const newProfile = {
-          name: dataToSave.name || '',
+        const newProfile = createDefaultProfile(activeEmail, dataToSave.name, {
           ruc: dataToSave.ruc || '',
           phone: dataToSave.phone || '',
-          email: activeEmail,
-          role: isAdminEmail ? 'SUPERADMIN' : 'USER',
-          hasCompletedOnboarding: isAdminEmail ? true : undefined,
-          status: 'ENABLED',
-          subscriptionEnd: addDays(new Date(), 90).toISOString(),
           pin: dataToSave.pin || '',
-          pinInactivityLimit: 60,
-          lastPinEntry: serverTimestamp(),
           createdAt: serverTimestamp(),
+          lastPinEntry: serverTimestamp(),
           ...dataToSave
-        };
-        if (import.meta.env.DEV) console.log("newProfile", newProfile); if (import.meta.env.DEV) console.log("Creating new profile:", JSON.stringify(newProfile, null, 2)); await setDoc(docRef, newProfile);
+        });
+        if (import.meta.env.DEV) {
+          console.log("Creating new profile:", JSON.stringify(newProfile, null, 2));
+        }
+        await setDoc(docRef, newProfile);
         setProfile(newProfile as unknown as UserProfile);
         if (!impersonatedUser) {
           setActualProfile(newProfile as unknown as UserProfile);
@@ -332,18 +319,8 @@ useEffect(() => {
         if (docSnap.exists()) {
           setProfile(docSnap.data() as UserProfile);
         } else {
-          // Fallback static profile structured gracefully
-          setProfile({
-            name: targetUser.displayName || targetUser.email.split('@')[0],
-            email: targetUser.email,
-            role: 'USER',
-            status: 'ENABLED',
-            subscriptionEnd: addDays(new Date(), 90).toISOString(),
-            pin: '',
-            pinInactivityLimit: 60,
-            lastPinEntry: new Date().toISOString(),
-            createdAt: new Date().toISOString()
-          });
+          // Fallback static profile structured gracefully using centralized helper
+          setProfile(createDefaultProfile(targetUser.email, targetUser.displayName, { uid: targetUser.uid }));
         }
         setSessionVerified(true); // Automatically bypass security keys & PINs during active simulation
         logAudit(AuditAction.SETTINGS_UPDATE, `Inició simulación de identidad para la cuenta: ${targetUser.email}`);
@@ -362,9 +339,9 @@ useEffect(() => {
 
   const isSuperAdminOriginal = isSuperAdminEmail(actualUser?.email);
   const isAdmin = profile?.role === 'ADMIN' || profile?.role === 'SUPERADMIN' || isSuperAdminEmail(effectiveUser?.email);
-  const isExpired = profile 
+  const isExpired = !loading && profile 
     ? (!isAdmin && !isSuperAdminOriginal && (isAfter(new Date(), parseISO(profile.subscriptionEnd)) || profile.status === 'DISABLED')) 
-    : (!!effectiveUser);
+    : false;
 
   return (
     <AuthContext.Provider value={{ 

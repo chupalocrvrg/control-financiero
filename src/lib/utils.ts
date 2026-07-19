@@ -56,13 +56,36 @@ export function generateCheckNumber(baseNumber: string, index: number): string {
   return (num + index).toString().padStart(baseNumber.length, '0');
 }
 
-export async function hashPin(pin: string): Promise<string> {
+export async function hashPin(pin: string, salt: string = ""): Promise<string> {
   const encoder = new TextEncoder();
-  const data = encoder.encode(pin);
+  const data = encoder.encode(salt ? `${salt}_${pin}` : pin);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   return hashHex;
+}
+
+export function createDefaultProfile(email: string, displayName?: string, extra: any = {}): any {
+  const isAdminEmail = isSuperAdminEmail(email);
+  return {
+    uid: extra.uid || '',
+    email: email,
+    name: displayName || email.split('@')[0] || 'Usuario Nuevo',
+    role: isAdminEmail ? 'SUPERADMIN' : 'USER',
+    status: 'ENABLED',
+    hasCompletedOnboarding: isAdminEmail,
+    subscriptionEnd: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+    createdAt: new Date().toISOString(),
+    pin: '',
+    pinInactivityLimit: 60,
+    lastPinEntry: new Date().toISOString(),
+    ...extra
+  };
+}
+
+export function sumAmounts<T>(items: T[], getValue: (item: T) => number): number {
+  const sum = items.reduce((acc, item) => acc + (getValue(item) || 0), 0);
+  return roundToTwo(sum);
 }
 
 export const SUPER_ADMIN_EMAILS = [
