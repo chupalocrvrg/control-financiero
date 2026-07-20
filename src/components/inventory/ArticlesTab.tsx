@@ -6,7 +6,6 @@ import { useNotification } from '../../contexts/NotificationContext';
 import { Article, Warehouse } from '../../types/inventory';
 import { Plus, Search, AlertTriangle, Edit3, Trash2, Package, Eye, Tag, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { adjustStockAndGlobalQuantity } from '../../lib/inventory-db';
 
 export default function ArticlesTab() {
   const { user, profile } = useAuth();

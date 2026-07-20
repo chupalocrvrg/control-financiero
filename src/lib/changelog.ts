@@ -11,6 +11,15 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.22.0",
+    date: new Date().toISOString(),
+    changes: [
+      "Blindaje Transaccional de Inventario: Se refactorizaron completamente todas las operaciones de inventario (préstamos, devoluciones, traslados y ventas directas) para utilizar Transacciones Atómicas (runTransaction) de Firestore.",
+      "Protección contra Descuadres por Concurrencia: Ahora la lectura del stock actual y la validación de disponibilidad se ejecutan en un bloque atómico. Si dos usuarios registran operaciones simultáneas sobre el mismo artículo, el sistema reintenta automáticamente, impidiendo stocks negativos o inconsistentes.",
+      "Optimización de Consultas (Read-Before-Write): Se centralizaron todas las actualizaciones de stock en una única función optimizada (processStockAdjustments) que respeta las normativas estrictas de Firestore agrupando todas las lecturas previas a las escrituras en memoria."
+    ],
+  },
+  {
     version: "4.21.1",
     date: new Date().toISOString(),
     changes: [

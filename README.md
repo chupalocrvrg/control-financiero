@@ -46,7 +46,9 @@ La aplicación está configurada como una Progressive Web App (PWA) de alto rend
 Declara las siguientes variables en tu archivo `.env` o en el panel de configuración de tu plataforma de despliegue:
 
 ```env
-
+# Configuración del Cliente (Vite)
+VITE_SUPER_ADMIN_EMAIL=admin@tusistema.com
+VITE_SUPER_ADMIN_EMAILS=superadmin@tusistema.com,otro_admin@tusistema.com
 
 # Claves Privadas de Backend (Exclusivamente del Servidor)
 GEMINI_API_KEY=tu_clave_de_gemini_aqui
