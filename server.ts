@@ -504,19 +504,32 @@ async function startServer() {
         return res.json({ success: true, message: "El usuario no tiene PIN configurado." });
       }
 
-      // Hash verification using crypto (SHA-256)
+      // Hash verification using crypto (scrypt)
       const crypto = await import("crypto");
       
-      // 1. Salted hash: uid_pin
-      const saltedInput = `${uid}_${pin}`;
-      const saltedHash = crypto.createHash("sha256").update(saltedInput).digest("hex");
+      const scryptSalt = `${uid}_salt`;
+      const scryptKeylen = 64;
+      const scryptHash = crypto.scryptSync(pin, scryptSalt, scryptKeylen).toString("hex");
       
-      // 2. Legacy hash: pin
+      // Legacy hashes for migration
+      const saltedInput = `${uid}_${pin}`;
+      const legacySaltedHash = crypto.createHash("sha256").update(saltedInput).digest("hex");
       const legacyHash = crypto.createHash("sha256").update(pin).digest("hex");
       
-      const isMatch = userPin === saltedHash || userPin === legacyHash || userPin === pin;
+      const isMatch = userPin === scryptHash || userPin === legacySaltedHash || userPin === legacyHash;
 
       if (isMatch) {
+        // If it was a legacy hash, migrate it to scrypt
+        if (userPin !== scryptHash) {
+          await userDocRef.collection("private").doc("security").set({
+            pin: scryptHash
+          }, { merge: true });
+          
+          await userDocRef.update({
+            pin: "" // Ensure main doc has no hash
+          });
+        }
+
         // Success: Reset failed attempts & lockout
         await userDocRef.update({
           failedPinAttempts: 0,
@@ -627,8 +640,9 @@ async function startServer() {
 
       // Valid! Update the PIN securely
       const crypto = await import("crypto");
-      const pinToHash = `${uid}_${newPin}`;
-      const hashedPin = crypto.createHash("sha256").update(pinToHash).digest("hex");
+      const scryptSalt = `${uid}_salt`;
+      const scryptKeylen = 64;
+      const hashedPin = crypto.scryptSync(newPin, scryptSalt, scryptKeylen).toString("hex");
 
       const nowIso = new Date().toISOString();
 
@@ -647,6 +661,56 @@ async function startServer() {
       res.json({ success: true, message: "PIN updated successfully." });
     } catch (error: any) {
       console.error("Error resetting PIN:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Endpoint to securely set or update PIN
+  app.post("/api/users/update-pin", async (req, res) => {
+    try {
+      let decodedToken;
+      try {
+        decodedToken = await getAuthenticatedUser(req);
+      } catch (authErr: any) {
+        return res.status(401).json({ error: authErr.message });
+      }
+
+      const { uid, newPin } = req.body;
+      
+      if (!uid || !newPin) {
+        return res.status(400).json({ error: "Parámetros requeridos faltantes (uid, newPin)." });
+      }
+
+      const isSelf = decodedToken.uid === uid;
+      const isAdmin = await verifyAdminRole(decodedToken);
+
+      if (!isSelf && !isAdmin) {
+        return res.status(403).json({ error: "Acceso denegado: no tiene permisos para cambiar el PIN de este usuario." });
+      }
+
+      if (!firestoreDb) {
+        return res.status(503).json({ error: "Database not connected." });
+      }
+
+      const crypto = await import("crypto");
+      const scryptSalt = `${uid}_salt`;
+      const scryptKeylen = 64;
+      const hashedPin = crypto.scryptSync(newPin, scryptSalt, scryptKeylen).toString("hex");
+
+      const userDocRef = firestoreDb.collection("users").doc(uid);
+      
+      await userDocRef.collection("private").doc("security").set({
+        pin: hashedPin
+      }, { merge: true });
+
+      await userDocRef.update({
+        pin: "",
+        lastPinEntry: new Date().toISOString()
+      });
+
+      res.json({ success: true, message: "PIN updated successfully." });
+    } catch (error: any) {
+      console.error("Error updating PIN:", error);
       res.status(500).json({ error: error.message });
     }
   });

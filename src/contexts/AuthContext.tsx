@@ -276,18 +276,29 @@ useEffect(() => {
     
     // Extract PIN if it is being updated
     const dataToSave = { ...data };
-    let pinToSave = '';
+    let newPinToSet = '';
     if (dataToSave.pin) {
-      pinToSave = await hashPin(dataToSave.pin, activeUid);
-      dataToSave.pin = ''; // Erase plain/hashed PIN on main document
+      newPinToSet = dataToSave.pin; // Keep the plain text to send to server
+      dataToSave.pin = ''; // Erase plain PIN so it doesn't go to firestore main doc
     }
     
     const docRef = doc(db, 'users', activeUid);
     try {
-      // 1. Write the hashed PIN securely to private subcollection if updated
-      if (pinToSave) {
-        const securityRef = doc(db, 'users', activeUid, 'private', 'security');
-        await setDoc(securityRef, { pin: pinToSave }, { merge: true });
+      // 1. Send PIN to server for secure scrypt hashing
+      if (newPinToSet) {
+        const token = await auth.currentUser?.getIdToken();
+        const response = await fetch('/api/users/update-pin', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ uid: activeUid, newPin: newPinToSet })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to securely update PIN via server');
+        }
       }
 
       const docSnap = await getDoc(docRef);

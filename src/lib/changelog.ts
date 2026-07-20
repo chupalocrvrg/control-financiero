@@ -11,6 +11,17 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.22.1",
+    date: new Date().toISOString(),
+    changes: [
+      "Mitigación de vulnerabilidades de seguridad críticas Nivel 1 reportadas por auditoría.",
+      "Cifrado Criptográfico Fuerte: Se reemplazó el algoritmo SHA-256 por scrypt en el backend (server.ts) para el hashing del PIN, eliminando el fallback a texto plano.",
+      "Protección contra Tenant Hijacking y Evasión de Validaciones: Se implementaron reglas estrictas de validación de esquemas (isValidX) en las colecciones de base de datos.",
+      "Blindaje en Logs de Auditoría: Se bloqueó el 'spoofing' obligando a que request.auth.uid coincida con el userId de los Audit Logs.",
+      "Prevención de Eliminación (Hard Delete): Se restringió la eliminación de cheques al administrador exclusivamente, garantizando trazabilidad contable."
+    ],
+  },
+  {
     version: "4.22.0",
     date: new Date().toISOString(),
     changes: [
