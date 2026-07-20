@@ -5,7 +5,7 @@ import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firest
 import { addDays, isAfter, parseISO } from 'date-fns';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { logAudit, AuditAction } from '../lib/audit';
-import { hashPin, isSuperAdminEmail, createDefaultProfile } from '../lib/utils';
+import { isSuperAdminEmail, createDefaultProfile } from '../lib/utils';
 
 export interface UserProfile {
   uid?: string;

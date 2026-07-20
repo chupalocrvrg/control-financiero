@@ -56,15 +56,6 @@ export function generateCheckNumber(baseNumber: string, index: number): string {
   return (num + index).toString().padStart(baseNumber.length, '0');
 }
 
-export async function hashPin(pin: string, salt: string = ""): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(salt ? `${salt}_${pin}` : pin);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  return hashHex;
-}
-
 export function createDefaultProfile(email: string, displayName?: string, extra: any = {}): any {
   const isAdminEmail = isSuperAdminEmail(email);
   return {

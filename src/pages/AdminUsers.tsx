@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { db } from '../firebase';
+import { auth, db } from '../firebase';
 import { collection, getDocs, getDoc, doc, updateDoc, query, where, orderBy, deleteDoc, addDoc, serverTimestamp, limit, writeBatch } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
-import { formatCurrency, cn, hashPin } from '../lib/utils';
+import { formatCurrency, cn } from '../lib/utils';
 import { format, parseISO, addDays, addMonths, addYears } from 'date-fns';
 import { Users, User, Shield, Calendar, Eye, Ban, CheckCircle, Search, Edit3, X, Download, ShieldCheck, Mail, Clock, Lock, Trash2, Plus, ArrowRight, RotateCcw, AlertTriangle } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -498,17 +498,31 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
     }
     setLoading(true);
     try {
-      const hashedPin = await hashPin(newPinValue, userId);
-      await updateDoc(doc(db, 'users', userId), { pin: hashedPin });
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, pin: hashedPin } : u));
-      if (selectedUser?.id === userId) setSelectedUser(prev => prev ? { ...prev, pin: hashedPin } : null);
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch('/api/users/update-pin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ uid: userId, newPin: newPinValue })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update PIN securely.');
+      }
+      
+      // Update local state by removing pin hash since it shouldn't be exposed
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, pin: '' } : u));
+      if (selectedUser?.id === userId) setSelectedUser(prev => prev ? { ...prev, pin: '' } : null);
       showToast("PIN actualizado exitosamente", "success");
       setShowPinModal(false);
       setNewPinValue('');
       logAudit(AuditAction.SETTINGS_UPDATE, `PIN de usuario ${userId} reseteado administrativamente`);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Error updating PIN:", e);
-      handleFirestoreError(e, OperationType.UPDATE, `users/${userId}`);
+      showToast(e.message || "Error al actualizar PIN", "error");
     } finally {
       setLoading(false);
     }

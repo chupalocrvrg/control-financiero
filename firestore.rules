@@ -133,43 +133,60 @@ service cloud.firestore {
     }
 
     function isValidEmployee(data) {
-      return data.name is string && data.lastName is string;
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.lastName is string && data.lastName.size() > 0 && data.lastName.size() <= 100;
     }
 
     function isValidBudget(data) {
-      return data.employeeId is string && data.month is string && data.salesBudget is number && data.collectionsBudget is number;
+      return data.employeeId is string && data.employeeId.size() > 0 && data.employeeId.size() <= 100 &&
+             data.month is string && data.month.size() > 0 && data.month.size() <= 20 &&
+             data.salesBudget is number && data.collectionsBudget is number;
     }
 
     function isValidSale(data) {
-      return data.employeeId is string && data.amount is number && data.date is string;
+      return data.employeeId is string && data.employeeId.size() > 0 && data.employeeId.size() <= 100 &&
+             data.amount is number && 
+             data.date is string && data.date.size() > 0 && data.date.size() <= 30;
     }
 
     function isValidCollection(data) {
-      return data.employeeId is string && data.amount is number && data.date is string;
+      return data.employeeId is string && data.employeeId.size() > 0 && data.employeeId.size() <= 100 &&
+             data.amount is number && 
+             data.date is string && data.date.size() > 0 && data.date.size() <= 30;
     }
 
     function isValidArticle(data) {
-      return data.name is string && data.quantity is number;
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.quantity is number;
     }
 
     function isValidWarehouse(data) {
-      return data.name is string;
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 200;
     }
 
     function isValidWarehouseInventory(data) {
-      return data.warehouseId is string && data.articleId is string && data.quantity is number;
+      return data.warehouseId is string && data.warehouseId.size() > 0 && data.warehouseId.size() <= 100 &&
+             data.articleId is string && data.articleId.size() > 0 && data.articleId.size() <= 100 &&
+             data.quantity is number;
     }
 
     function isValidTransfer(data) {
-      return data.fromWarehouseId is string && data.toWarehouseId is string && data.articles is list && data.reason is string;
+      return data.fromWarehouseId is string && data.fromWarehouseId.size() > 0 && data.fromWarehouseId.size() <= 100 &&
+             data.toWarehouseId is string && data.toWarehouseId.size() > 0 && data.toWarehouseId.size() <= 100 &&
+             data.articles is list && data.articles.size() <= 1000 &&
+             data.reason is string && data.reason.size() <= 200;
     }
 
     function isValidLoanReturn(data) {
-      return data.type in ['LOAN', 'RETURN'] && data.articles is list && data.personName is string;
+      return data.type in ['LOAN', 'RETURN'] &&
+             data.articles is list && data.articles.size() <= 1000 &&
+             data.personName is string && data.personName.size() > 0 && data.personName.size() <= 200;
     }
 
     function isValidInventorySale(data) {
-      return data.clientName is string && data.sellerId is string && data.soldArticles is list;
+      return data.clientName is string && data.clientName.size() > 0 && data.clientName.size() <= 200 &&
+             data.sellerId is string && data.sellerId.size() > 0 && data.sellerId.size() <= 100 &&
+             data.soldArticles is list && data.soldArticles.size() <= 1000;
     }
 
     // ===============================================================
@@ -204,7 +221,7 @@ service cloud.firestore {
       // Completely blocks all client-side reading (Zero-Trust) to prevent offline brute-force cracking
       match /private/security {
         allow read, list: if false;
-        allow write: if isOwner(userId);
+        allow write: if false;
       }
     }
 
