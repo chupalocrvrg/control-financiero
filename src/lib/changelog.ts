@@ -11,23 +11,6 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
-    version: "4.20.1",
-    date: new Date().toISOString(),
-    changes: [
-      "Solución de Crash por Traducción Automática (Vercel/Navegadores): Se implementó un monkey-patch robusto y estandarizado a nivel global sobre Node.prototype.removeChild y Node.prototype.insertBefore en main.tsx para evitar que React colapse con un error fatal cuando Google Translate o extensiones de traducción modifican el DOM dinámicamente.",
-      "Corrección de Atributo de Idioma Documental: Se ajustó la configuración del atributo lang en index.html a español ('es') para sincronizar la declaración formal del documento con el contenido de la plataforma, evitando que los navegadores ofrezcan traducciones automáticas innecesarias a los usuarios nativos."
-    ],
-  },
-  {
-    version: "4.20.0",
-    date: new Date().toISOString(),
-    changes: [
-      "Verificación de PIN en Servidor con Rate Limiting: Se trasladó la verificación del PIN de seguridad a un endpoint seguro de backend en Express, sincronizando de forma segura los intentos fallidos, penalizaciones y el bloqueo temporal directamente en Firestore para impedir que un atacante evada el lockout borrando el almacenamiento local.",
-      "Consistencia Numérica en Múltiples Módulos: Se integró la función roundToTwo() en sumas de dinero y acumuladores críticos de Ventas por vendedor, Cobranzas por cobrador, Presupuestos en el Directorio Comercial y Totales históricos en el Explorador de Pagos, eliminando discrepancias por imprecisiones de punto flotante IEEE-754.",
-      "Reducción en Uso de Tipos Genéricos (any): Se tiparon estrictamente los campos de facturas y cheques (incluyendo enterpriseId) en el Explorador de Pagos para retirar castings de tipo any, aumentando la claridad y la seguridad estática del código."
-    ],
-  },
-  {
     version: "4.19.1",
     date: new Date().toISOString(),
     changes: [
