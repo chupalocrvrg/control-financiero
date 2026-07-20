@@ -657,21 +657,46 @@ async function startServer() {
       const cronSecret = process.env.CRON_SECRET;
       const authorizationHeader = req.headers.authorization;
       const querySecret = req.query.cron_secret || req.query.secret;
+      const customHeaderSecret = req.headers['x-cron-secret'];
 
-      // Restrict access using the CRON_SECRET if it's set (allow a manual UI bypass header or query)
-      const isBypassed = req.query.bypass === "true" || req.headers["x-bypass-cron"] === "true";
-      if (cronSecret && !isBypassed) {
-        const isAuthHeaderMatch = authorizationHeader === `Bearer ${cronSecret}`;
-        const isQuerySecretMatch = querySecret === cronSecret;
-        const isCustomHeaderMatch = req.headers['x-cron-secret'] === cronSecret;
+      let isAuthorized = false;
 
-        if (!isAuthHeaderMatch && !isQuerySecretMatch && !isCustomHeaderMatch) {
-          return res.status(401).json({ error: "Unauthorized: Invalid CRON_SECRET." });
+      // 1. Check if authenticated via Firebase ID Token with Admin Role
+      if (authorizationHeader && authorizationHeader.startsWith("Bearer ")) {
+        try {
+          const decodedToken = await getAuthenticatedUser(req);
+          const isAdmin = await verifyAdminRole(decodedToken);
+          if (isAdmin) {
+            isAuthorized = true;
+            if (process.env.NODE_ENV !== 'production') {
+              console.log(`Cron daily-report authorized via Admin User Token: ${decodedToken.email}`);
+            }
+          }
+        } catch (authErr) {
+          // If it started with Bearer but wasn't a valid Firebase token, it might be a Bearer CRON_SECRET.
+          // We will let it fall through to the CRON_SECRET check.
         }
-      } else if (isBypassed) {
-        if (process.env.NODE_ENV !== 'production') console.log("Cron execution bypassed security checks via explicit user bypass parameter.");
-      } else {
-        console.warn("Warning: CRON_SECRET is not set in environment. Bypassing cron security verification.");
+      }
+
+      // 2. Check if authenticated via CRON_SECRET
+      if (!isAuthorized) {
+        if (cronSecret) {
+          const isAuthHeaderMatch = authorizationHeader === `Bearer ${cronSecret}`;
+          const isQuerySecretMatch = querySecret === cronSecret;
+          const isCustomHeaderMatch = customHeaderSecret === cronSecret;
+
+          if (isAuthHeaderMatch || isQuerySecretMatch || isCustomHeaderMatch) {
+            isAuthorized = true;
+          }
+        } else {
+          console.warn("Warning: CRON_SECRET is not set in environment.");
+        }
+      }
+
+      if (!isAuthorized) {
+        return res.status(401).json({ 
+          error: "No autorizado: Se requiere un token de Firebase con privilegios de administrador o un CRON_SECRET válido configurado en el servidor." 
+        });
       }
 
       if (!firestoreDb) {

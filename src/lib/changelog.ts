@@ -11,6 +11,15 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.21.1",
+    date: new Date().toISOString(),
+    changes: [
+      "Clausura de Puerta Trasera en Reportes Diarios: Se eliminaron por completo las opciones de bypass inseguro ('bypass' y 'x-bypass-cron') del endpoint de reportes de cheques diarios (/api/cron/daily-report).",
+      "Robustez ante Variables no Configuradas: Se corrigió la vulnerabilidad de 'falsa alarma' que permitía el paso libre cuando CRON_SECRET no estaba configurado. Ahora, si no existe secreto ni autenticación, el servidor deniega la entrada con un estado HTTP 401.",
+      "Esquema Híbrido de Seguridad Unificado: Se integró la verificación estricta de Firebase ID Token con rol de administrador (ADMIN/SUPERADMIN) como alternativa de acceso al cron, permitiendo a los administradores del sistema gatillar el reporte manualmente con total seguridad desde la API."
+    ],
+  },
+  {
     version: "4.21.0",
     date: new Date().toISOString(),
     changes: [
