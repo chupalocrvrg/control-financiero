@@ -167,76 +167,18 @@ function generateReportHtml(userName: string, checks: any[]): string {
   `;
 }
 
-export const app = express();
-const PORT = 3000;
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
 
-// Middleware to parse incoming JSON bodies
-app.use(express.json());
+  // Middleware to parse incoming JSON bodies
+  app.use(express.json());
 
-  const SUPER_ADMIN_EMAILS = [
-    process.env.VITE_SUPER_ADMIN_EMAIL,
-    ...(process.env.VITE_SUPER_ADMIN_EMAILS || '').split(',').map((e: string) => e.trim())
-  ].filter(Boolean) as string[];
-
-  // Securely retrieves and verifies Firebase ID Token from request headers
-  async function getAuthenticatedUser(req: express.Request) {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      throw new Error("No autenticado: falta el token de autorización.");
-    }
-    const token = authHeader.split("Bearer ")[1];
-    return await admin.auth().verifyIdToken(token);
-  }
-
-  // Verifies if the authenticated user has ADMIN or SUPERADMIN privileges
-  async function verifyAdminRole(decodedToken: admin.auth.DecodedIdToken) {
-    const email = decodedToken.email;
-    const uid = decodedToken.uid;
-
-    if (decodedToken.admin === true || decodedToken.role === 'SUPERADMIN' || decodedToken.role === 'ADMIN') {
-      return true;
-    }
-
-    if (email && SUPER_ADMIN_EMAILS.includes(email)) {
-      return true;
-    }
-
-    if (firestoreDb) {
-      try {
-        const userDoc = await firestoreDb.collection("users").doc(uid).get();
-        if (userDoc.exists) {
-          const role = userDoc.data()?.role;
-          if (role === 'SUPERADMIN' || role === 'ADMIN') {
-            return true;
-          }
-        }
-      } catch (err) {
-        console.error("Error checking user role in Firestore:", err);
-      }
-    }
-
-    return false;
-  }
-
-  // Diagnostics endpoint - secured with token validation and admin authorization
   app.get("/api/diagnostics/db", async (req, res) => {
     try {
-      let decodedToken;
-      try {
-        decodedToken = await getAuthenticatedUser(req);
-      } catch (authErr: any) {
-        return res.status(401).json({ error: authErr.message });
-      }
-
-      const isAdmin = await verifyAdminRole(decodedToken);
-      if (!isAdmin) {
-        return res.status(403).json({ error: "Acceso denegado: se requieren permisos de administrador." });
-      }
-
       if (!firestoreDb) {
         return res.status(500).json({ error: "Firestore is not initialized" });
       }
-
       const empSnap = await firestoreDb.collection("employees").get();
       const employees = empSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
@@ -256,20 +198,11 @@ app.use(express.json());
   });
 
   // 1. Endpoint api/users/profile - user persistence (upsert)
-  // Completely secured with verified Firebase ID token to prevent privilege escalation
   app.post("/api/users/profile", async (req, res) => {
     try {
-      let decodedToken;
-      try {
-        decodedToken = await getAuthenticatedUser(req);
-      } catch (authErr: any) {
-        return res.status(401).json({ error: authErr.message });
-      }
-
-      const uid = decodedToken.uid;
-      const email = decodedToken.email;
+      const { uid, email, displayName } = req.body;
       if (!uid || !email) {
-        return res.status(400).json({ error: "No se pudo extraer el UID o email de la autenticación." });
+        return res.status(400).json({ error: "Missing required profile parameters ('uid' and 'email' are required)." });
       }
 
       if (!firestoreDb) {
@@ -287,10 +220,15 @@ app.use(express.json());
         const ninetyDaysExpiry = new Date();
         ninetyDaysExpiry.setDate(ninetyDaysExpiry.getDate() + 90);
 
+        const SUPER_ADMIN_EMAILS = [
+          process.env.VITE_SUPER_ADMIN_EMAIL,
+          ...(process.env.VITE_SUPER_ADMIN_EMAILS || '').split(',').map((e: string) => e.trim())
+        ].filter(Boolean) as string[];
+
         const isAdminEmail = SUPER_ADMIN_EMAILS.includes(email);
 
         const newUserProfile = {
-          name: decodedToken.name || email.split('@')[0],
+          name: displayName || email.split('@')[0],
           ruc: "",
           phone: "",
           email: email,
@@ -323,6 +261,11 @@ app.use(express.json());
 
         return res.status(201).json({ status: "created", profile: newUserProfile });
       } else {
+        const SUPER_ADMIN_EMAILS = [
+          process.env.VITE_SUPER_ADMIN_EMAIL,
+          ...(process.env.VITE_SUPER_ADMIN_EMAILS || '').split(',').map((e: string) => e.trim())
+        ].filter(Boolean) as string[];
+
         const isAdminEmail = SUPER_ADMIN_EMAILS.includes(email);
 
         // Update only dynamic fields (avoid resetting custom fields like PIN)
@@ -390,26 +333,11 @@ app.use(express.json());
   });
 
   // Endpoint to sync claims for any user (called by admin or automatically)
-  // Protected with verified token; only allows self-sync or administrative access
   app.post("/api/admin/sync-claims", async (req, res) => {
     try {
-      let decodedToken;
-      try {
-        decodedToken = await getAuthenticatedUser(req);
-      } catch (authErr: any) {
-        return res.status(401).json({ error: authErr.message });
-      }
-
       const { uid } = req.body;
       if (!uid) {
         return res.status(400).json({ error: "Missing required uid parameter." });
-      }
-
-      const isSelf = decodedToken.uid === uid;
-      const isAdmin = await verifyAdminRole(decodedToken);
-
-      if (!isSelf && !isAdmin) {
-        return res.status(403).json({ error: "Acceso denegado: permisos insuficientes para sincronizar credenciales." });
       }
 
       if (!firestoreDb) {
@@ -441,25 +369,10 @@ app.use(express.json());
   // Endpoint to verify PIN securely on server with progressive rate limiting
   app.post("/api/users/verify-pin", async (req, res) => {
     try {
-      let decodedToken;
-      try {
-        decodedToken = await getAuthenticatedUser(req);
-      } catch (authErr: any) {
-        return res.status(401).json({ error: authErr.message });
-      }
-
       const { uid, pin } = req.body;
       
       if (!uid || !pin) {
         return res.status(400).json({ error: "Parámetros requeridos faltantes (uid, pin)." });
-      }
-
-      // Authorization: Caller must verify their own PIN, or be an admin
-      const isSelf = decodedToken.uid === uid;
-      const isAdmin = await verifyAdminRole(decodedToken);
-
-      if (!isSelf && !isAdmin) {
-        return res.status(403).json({ error: "Acceso denegado: no tiene permisos para verificar el PIN de este usuario." });
       }
 
       if (!firestoreDb) {
@@ -488,47 +401,24 @@ app.use(express.json());
         }
       }
 
-      // Retrieve the PIN hash securely from the private subcollection
-      let userPin = userData.pin || "";
-      const securityDoc = await userDocRef.collection("private").doc("security").get();
-      if (securityDoc.exists) {
-        const secData = securityDoc.data();
-        if (secData && secData.pin) {
-          userPin = secData.pin;
-        }
-      }
-
-      // If user has no PIN set yet anywhere
-      if (!userPin) {
+      // If user has no PIN set yet
+      if (!userData.pin) {
         return res.json({ success: true, message: "El usuario no tiene PIN configurado." });
       }
 
-      // Hash verification using crypto (scrypt)
+      // Hash verification using crypto (SHA-256)
       const crypto = await import("crypto");
       
-      const scryptSalt = `${uid}_salt`;
-      const scryptKeylen = 64;
-      const scryptHash = crypto.scryptSync(pin, scryptSalt, scryptKeylen).toString("hex");
-      
-      // Legacy hashes for migration
+      // 1. Salted hash: uid_pin
       const saltedInput = `${uid}_${pin}`;
-      const legacySaltedHash = crypto.createHash("sha256").update(saltedInput).digest("hex");
+      const saltedHash = crypto.createHash("sha256").update(saltedInput).digest("hex");
+      
+      // 2. Legacy hash: pin
       const legacyHash = crypto.createHash("sha256").update(pin).digest("hex");
       
-      const isMatch = userPin === scryptHash || userPin === legacySaltedHash || userPin === legacyHash || userPin === pin;
+      const isMatch = userData.pin === saltedHash || userData.pin === legacyHash || userData.pin === pin;
 
       if (isMatch) {
-        // If it was a legacy hash, migrate it to scrypt
-        if (userPin !== scryptHash) {
-          await userDocRef.collection("private").doc("security").set({
-            pin: scryptHash
-          }, { merge: true });
-          
-          await userDocRef.update({
-            pin: "" // Ensure main doc has no hash
-          });
-        }
-
         // Success: Reset failed attempts & lockout
         await userDocRef.update({
           failedPinAttempts: 0,
@@ -582,33 +472,17 @@ app.use(express.json());
   // Endpoint to reset PIN using TOTP code
   app.post("/api/users/reset-pin", async (req, res) => {
     try {
-      let decodedToken;
-      try {
-        decodedToken = await getAuthenticatedUser(req);
-      } catch (authErr: any) {
-        return res.status(401).json({ error: authErr.message });
-      }
-
       const { uid, totpCode, newPin } = req.body;
       
       if (!uid || !totpCode || !newPin) {
         return res.status(400).json({ error: "Missing required parameters (uid, totpCode, newPin)." });
       }
 
-      // Authorization: Caller must reset their own PIN, or be an admin
-      const isSelf = decodedToken.uid === uid;
-      const isAdmin = await verifyAdminRole(decodedToken);
-
-      if (!isSelf && !isAdmin) {
-        return res.status(403).json({ error: "Acceso denegado: no tiene permisos para restablecer el PIN de este usuario." });
-      }
-
       if (!firestoreDb) {
         return res.status(503).json({ error: "Database not connected." });
       }
 
-      const userDocRef = firestoreDb.collection("users").doc(uid);
-      const userDoc = await userDocRef.get();
+      const userDoc = await firestoreDb.collection("users").doc(uid).get();
       if (!userDoc.exists) {
         return res.status(404).json({ error: "User not found." });
       }
@@ -637,79 +511,21 @@ app.use(express.json());
         return res.status(401).json({ error: "Invalid TOTP code." });
       }
 
-      // Valid! Update the PIN securely
+      // Valid! Update the PIN
       const crypto = await import("crypto");
-      const scryptSalt = `${uid}_salt`;
-      const scryptKeylen = 64;
-      const hashedPin = crypto.scryptSync(newPin, scryptSalt, scryptKeylen).toString("hex");
+      const pinToHash = `${uid}_${newPin}`;
+      const hashedPin = crypto.createHash("sha256").update(pinToHash).digest("hex");
 
       const nowIso = new Date().toISOString();
-
-      // 1. Write hashed pin to secure private subcollection
-      await userDocRef.collection("private").doc("security").set({
-        pin: hashedPin
-      }, { merge: true });
-
-      // 2. Clear pin hash from main user document to keep it unreadable from client-side
-      await userDocRef.update({
-        pin: "",
+      await firestoreDb.collection("users").doc(uid).update({
+        pin: hashedPin,
         lastPinEntry: nowIso
       });
 
-      if (process.env.NODE_ENV !== 'production') console.log(`Successfully reset PIN securely for user ${uid} via TOTP verification on server.`);
+      if (process.env.NODE_ENV !== 'production') console.log(`Successfully reset PIN for user ${uid} via TOTP verification on server.`);
       res.json({ success: true, message: "PIN updated successfully." });
     } catch (error: any) {
       console.error("Error resetting PIN:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Endpoint to securely set or update PIN
-  app.post("/api/users/update-pin", async (req, res) => {
-    try {
-      let decodedToken;
-      try {
-        decodedToken = await getAuthenticatedUser(req);
-      } catch (authErr: any) {
-        return res.status(401).json({ error: authErr.message });
-      }
-
-      const { uid, newPin } = req.body;
-      
-      if (!uid || !newPin) {
-        return res.status(400).json({ error: "Parámetros requeridos faltantes (uid, newPin)." });
-      }
-
-      const isSelf = decodedToken.uid === uid;
-      const isAdmin = await verifyAdminRole(decodedToken);
-
-      if (!isSelf && !isAdmin) {
-        return res.status(403).json({ error: "Acceso denegado: no tiene permisos para cambiar el PIN de este usuario." });
-      }
-
-      if (!firestoreDb) {
-        return res.status(503).json({ error: "Database not connected." });
-      }
-
-      const crypto = await import("crypto");
-      const scryptSalt = `${uid}_salt`;
-      const scryptKeylen = 64;
-      const hashedPin = crypto.scryptSync(newPin, scryptSalt, scryptKeylen).toString("hex");
-
-      const userDocRef = firestoreDb.collection("users").doc(uid);
-      
-      await userDocRef.collection("private").doc("security").set({
-        pin: hashedPin
-      }, { merge: true });
-
-      await userDocRef.update({
-        pin: "",
-        lastPinEntry: new Date().toISOString()
-      });
-
-      res.json({ success: true, message: "PIN updated successfully." });
-    } catch (error: any) {
-      console.error("Error updating PIN:", error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -720,46 +536,21 @@ app.use(express.json());
       const cronSecret = process.env.CRON_SECRET;
       const authorizationHeader = req.headers.authorization;
       const querySecret = req.query.cron_secret || req.query.secret;
-      const customHeaderSecret = req.headers['x-cron-secret'];
 
-      let isAuthorized = false;
+      // Restrict access using the CRON_SECRET if it's set (allow a manual UI bypass header or query)
+      const isBypassed = req.query.bypass === "true" || req.headers["x-bypass-cron"] === "true";
+      if (cronSecret && !isBypassed) {
+        const isAuthHeaderMatch = authorizationHeader === `Bearer ${cronSecret}`;
+        const isQuerySecretMatch = querySecret === cronSecret;
+        const isCustomHeaderMatch = req.headers['x-cron-secret'] === cronSecret;
 
-      // 1. Check if authenticated via Firebase ID Token with Admin Role
-      if (authorizationHeader && authorizationHeader.startsWith("Bearer ")) {
-        try {
-          const decodedToken = await getAuthenticatedUser(req);
-          const isAdmin = await verifyAdminRole(decodedToken);
-          if (isAdmin) {
-            isAuthorized = true;
-            if (process.env.NODE_ENV !== 'production') {
-              console.log(`Cron daily-report authorized via Admin User Token: ${decodedToken.email}`);
-            }
-          }
-        } catch (authErr) {
-          // If it started with Bearer but wasn't a valid Firebase token, it might be a Bearer CRON_SECRET.
-          // We will let it fall through to the CRON_SECRET check.
+        if (!isAuthHeaderMatch && !isQuerySecretMatch && !isCustomHeaderMatch) {
+          return res.status(401).json({ error: "Unauthorized: Invalid CRON_SECRET." });
         }
-      }
-
-      // 2. Check if authenticated via CRON_SECRET
-      if (!isAuthorized) {
-        if (cronSecret) {
-          const isAuthHeaderMatch = authorizationHeader === `Bearer ${cronSecret}`;
-          const isQuerySecretMatch = querySecret === cronSecret;
-          const isCustomHeaderMatch = customHeaderSecret === cronSecret;
-
-          if (isAuthHeaderMatch || isQuerySecretMatch || isCustomHeaderMatch) {
-            isAuthorized = true;
-          }
-        } else {
-          console.warn("Warning: CRON_SECRET is not set in environment.");
-        }
-      }
-
-      if (!isAuthorized) {
-        return res.status(401).json({ 
-          error: "No autorizado: Se requiere un token de Firebase con privilegios de administrador o un CRON_SECRET válido configurado en el servidor." 
-        });
+      } else if (isBypassed) {
+        if (process.env.NODE_ENV !== 'production') console.log("Cron execution bypassed security checks via explicit user bypass parameter.");
+      } else {
+        console.warn("Warning: CRON_SECRET is not set in environment. Bypassing cron security verification.");
       }
 
       if (!firestoreDb) {
@@ -909,21 +700,8 @@ app.use(express.json());
   });
 
   // 3. Simple Direct Test Email Endpoint - /api/emails/test-direct
-  // Protected with verified token; only allows access to authorized administrators
   app.post("/api/emails/test-direct", express.json(), async (req, res) => {
     try {
-      let decodedToken;
-      try {
-        decodedToken = await getAuthenticatedUser(req);
-      } catch (authErr: any) {
-        return res.status(401).json({ error: authErr.message });
-      }
-
-      const isAdmin = await verifyAdminRole(decodedToken);
-      if (!isAdmin) {
-        return res.status(403).json({ error: "Acceso denegado: se requieren privilegios de administrador para enviar correos de prueba." });
-      }
-
       const { email } = req.body;
       if (!email) {
         return res.status(400).json({ error: "Falta la dirección de correo 'email' para enviar la prueba." });
@@ -981,7 +759,6 @@ app.use(express.json());
   });
 
   // Service Routing
-async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -1001,8 +778,4 @@ async function startServer() {
   });
 }
 
-if (!process.env.VERCEL) {
-  startServer();
-}
-
-export default app;
+startServer();

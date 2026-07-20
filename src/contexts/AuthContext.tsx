@@ -5,7 +5,7 @@ import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firest
 import { addDays, isAfter, parseISO } from 'date-fns';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { logAudit, AuditAction } from '../lib/audit';
-import { isSuperAdminEmail, createDefaultProfile } from '../lib/utils';
+import { hashPin, isSuperAdminEmail, createDefaultProfile } from '../lib/utils';
 
 export interface UserProfile {
   uid?: string;
@@ -68,14 +68,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           // Sync login or profile with full-stack backend
           try {
-            const idToken = await firebaseUser.getIdToken();
             await fetch('/api/users/profile', {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${idToken}`
+                'Content-Type': 'application/json'
               },
               body: JSON.stringify({
+                uid: firebaseUser.uid,
+                email: firebaseUser.email,
                 displayName: firebaseUser.displayName || '',
                 photoURL: firebaseUser.photoURL || ''
               })
@@ -237,12 +237,10 @@ useEffect(() => {
     }
     
     try {
-      const idToken = actualUser ? await actualUser.getIdToken() : '';
       const response = await fetch('/api/users/verify-pin', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
         },
         body: JSON.stringify({ uid: targetUid, pin })
       });
@@ -274,33 +272,14 @@ useEffect(() => {
     const activeUid = impersonatedUser ? impersonatedUser.uid : actualUser?.uid;
     if (!activeUid) return;
     
-    // Extract PIN if it is being updated
+    // Hash PIN if it is being updated
     const dataToSave = { ...data };
-    let newPinToSet = '';
     if (dataToSave.pin) {
-      newPinToSet = dataToSave.pin; // Keep the plain text to send to server
-      dataToSave.pin = ''; // Erase plain PIN so it doesn't go to firestore main doc
+      dataToSave.pin = await hashPin(dataToSave.pin, activeUid);
     }
     
     const docRef = doc(db, 'users', activeUid);
     try {
-      // 1. Send PIN to server for secure scrypt hashing
-      if (newPinToSet) {
-        const token = await auth.currentUser?.getIdToken();
-        const response = await fetch('/api/users/update-pin', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ uid: activeUid, newPin: newPinToSet })
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to securely update PIN via server');
-        }
-      }
-
       const docSnap = await getDoc(docRef);
       
       if (!docSnap.exists()) {
@@ -308,7 +287,7 @@ useEffect(() => {
         const newProfile = createDefaultProfile(activeEmail, dataToSave.name, {
           ruc: dataToSave.ruc || '',
           phone: dataToSave.phone || '',
-          pin: '',
+          pin: dataToSave.pin || '',
           createdAt: serverTimestamp(),
           lastPinEntry: serverTimestamp(),
           ...dataToSave

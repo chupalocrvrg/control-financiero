@@ -11,62 +11,6 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
-    version: "4.22.3",
-    date: new Date().toISOString(),
-    changes: [
-      "Compatibilidad Vercel Serverless: Se reestructuró el backend (server.ts) para exportar de forma nativa la aplicación Express.",
-      "Se agregó 'api/index.ts' y se reescribieron las reglas de 'vercel.json' para soportar endpoints de la API (PIN y Cron) en despliegues estáticos.",
-      "Resolución del problema donde el PIN no funcionaba en producción en Vercel."
-    ],
-  },
-  {
-    version: "4.22.2",
-    date: new Date().toISOString(),
-    changes: [
-      "Corrección Crítica: Restablecimiento de PIN mediante Autenticador de Google.",
-      "Se corrigió un error que bloqueaba el restablecimiento del PIN desde el lado del cliente al intentar verificar el secreto del Autenticador.",
-      "Se reintrodujo temporalmente el soporte de migración para PINs en texto plano previos a la implementación de scrypt, garantizando el acceso a usuarios antiguos."
-    ],
-  },
-  {
-    version: "4.22.1",
-    date: new Date().toISOString(),
-    changes: [
-      "Mitigación de vulnerabilidades de seguridad críticas Nivel 1 reportadas por auditoría.",
-      "Cifrado Criptográfico Fuerte: Se reemplazó el algoritmo SHA-256 por scrypt en el backend (server.ts) para el hashing del PIN, eliminando el fallback a texto plano.",
-      "Protección contra Tenant Hijacking y Evasión de Validaciones: Se implementaron reglas estrictas de validación de esquemas (isValidX) en las colecciones de base de datos.",
-      "Blindaje en Logs de Auditoría: Se bloqueó el 'spoofing' obligando a que request.auth.uid coincida con el userId de los Audit Logs.",
-      "Prevención de Eliminación (Hard Delete): Se restringió la eliminación de cheques al administrador exclusivamente, garantizando trazabilidad contable."
-    ],
-  },
-  {
-    version: "4.22.0",
-    date: new Date().toISOString(),
-    changes: [
-      "Blindaje Transaccional de Inventario: Se refactorizaron completamente todas las operaciones de inventario (préstamos, devoluciones, traslados y ventas directas) para utilizar Transacciones Atómicas (runTransaction) de Firestore.",
-      "Protección contra Descuadres por Concurrencia: Ahora la lectura del stock actual y la validación de disponibilidad se ejecutan en un bloque atómico. Si dos usuarios registran operaciones simultáneas sobre el mismo artículo, el sistema reintenta automáticamente, impidiendo stocks negativos o inconsistentes.",
-      "Optimización de Consultas (Read-Before-Write): Se centralizaron todas las actualizaciones de stock en una única función optimizada (processStockAdjustments) que respeta las normativas estrictas de Firestore agrupando todas las lecturas previas a las escrituras en memoria."
-    ],
-  },
-  {
-    version: "4.21.1",
-    date: new Date().toISOString(),
-    changes: [
-      "Clausura de Puerta Trasera en Reportes Diarios: Se eliminaron por completo las opciones de bypass inseguro ('bypass' y 'x-bypass-cron') del endpoint de reportes de cheques diarios (/api/cron/daily-report).",
-      "Robustez ante Variables no Configuradas: Se corrigió la vulnerabilidad de 'falsa alarma' que permitía el paso libre cuando CRON_SECRET no estaba configurado. Ahora, si no existe secreto ni autenticación, el servidor deniega la entrada con un estado HTTP 401.",
-      "Esquema Híbrido de Seguridad Unificado: Se integró la verificación estricta de Firebase ID Token con rol de administrador (ADMIN/SUPERADMIN) como alternativa de acceso al cron, permitiendo a los administradores del sistema gatillar el reporte manualmente con total seguridad desde la API."
-    ],
-  },
-  {
-    version: "4.21.0",
-    date: new Date().toISOString(),
-    changes: [
-      "Mitigación de Escalación de Privilegios: Se implementó la verificación obligatoria del Firebase ID Token en el header Authorization para los endpoints críticos /api/users/profile y /api/admin/sync-claims en server.ts, extrayendo el UID y email de forma segura directamente del token de autenticación verificado para evitar impersonaciones.",
-      "Almacenamiento Zero-Trust de PIN de Seguridad: Se trasladó el hash del PIN de seguridad a la subcolección privada y segura /users/{userId}/private/security en Firestore, protegida con reglas de seguridad estrictas que impiden cualquier lectura desde el lado del cliente (evitando ataques de fuerza bruta offline contra hashes filtrados).",
-      "Protección y Aseguramiento de Endpoints Auxiliares: Se blindaron los endpoints de diagnóstico de base de datos (/api/diagnostics/db) y de envío directo de correo electrónico (/api/emails/test-direct) con verificación estricta de token de Firebase y roles de administrador (ADMIN/SUPERADMIN) para impedir accesos no autorizados."
-    ],
-  },
-  {
     version: "4.20.0",
     date: new Date().toISOString(),
     changes: [
