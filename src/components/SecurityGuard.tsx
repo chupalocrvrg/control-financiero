@@ -74,7 +74,7 @@ export default function SecurityGuard({ children }: { children: React.ReactNode 
     e.preventDefault();
     setResetError('');
     
-    if (!profile?.totpEnabled || !profile.totpSecret) {
+    if (!profile?.totpEnabled) {
       setResetError('Autenticador de Google no configurado. Póngase en contacto con el administrador para el restablecimiento manual de su PIN.');
       return;
     }

@@ -11,6 +11,15 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.22.2",
+    date: new Date().toISOString(),
+    changes: [
+      "Corrección Crítica: Restablecimiento de PIN mediante Autenticador de Google.",
+      "Se corrigió un error que bloqueaba el restablecimiento del PIN desde el lado del cliente al intentar verificar el secreto del Autenticador.",
+      "Se reintrodujo temporalmente el soporte de migración para PINs en texto plano previos a la implementación de scrypt, garantizando el acceso a usuarios antiguos."
+    ],
+  },
+  {
     version: "4.22.1",
     date: new Date().toISOString(),
     changes: [

@@ -516,7 +516,7 @@ async function startServer() {
       const legacySaltedHash = crypto.createHash("sha256").update(saltedInput).digest("hex");
       const legacyHash = crypto.createHash("sha256").update(pin).digest("hex");
       
-      const isMatch = userPin === scryptHash || userPin === legacySaltedHash || userPin === legacyHash;
+      const isMatch = userPin === scryptHash || userPin === legacySaltedHash || userPin === legacyHash || userPin === pin;
 
       if (isMatch) {
         // If it was a legacy hash, migrate it to scrypt
