@@ -216,20 +216,20 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     const root = window.document.documentElement;
     const applyTheme = (theme: Theme) => {
-      if (import.meta.env.DEV) console.log('Applying theme:', theme);
+      console.log('Applying theme:', theme);
       root.classList.remove('light', 'dark');
       let appliedTheme: 'light' | 'dark';
       
       if (theme === 'system') {
         appliedTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        if (import.meta.env.DEV) console.log('System theme resolved to:', appliedTheme);
+        console.log('System theme resolved to:', appliedTheme);
       } else {
         appliedTheme = theme as 'light' | 'dark';
       }
       
       root.classList.add(appliedTheme);
       root.style.colorScheme = appliedTheme;
-      if (import.meta.env.DEV) console.log('Root classes after update:', root.className);
+      console.log('Root classes after update:', root.className);
     };
 
     // Apply Accent Color
@@ -274,7 +274,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // If simulating/impersonating, DO NOT save to Firestore or original user's localStorage (purely temporal)
     if (impersonatedUser) {
-      if (import.meta.env.DEV) console.log('Temporary settings applied in-memory during simulation');
+      console.log('Temporary settings applied in-memory during simulation');
       return;
     }
 

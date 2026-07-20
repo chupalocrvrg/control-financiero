@@ -108,7 +108,7 @@ export default function CheckEntry() {
       // Use header: 1 to get array of arrays (A=0, B=1, etc)
       const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
 
-      if (import.meta.env.DEV) console.log('Strict Column Data parsed:', data);
+      console.log('Strict Column Data parsed:', data);
 
       setLoading(true);
       let count = 0;

@@ -7,7 +7,6 @@ import { useNotification } from '../contexts/NotificationContext';
 import { logAudit, AuditAction } from '../lib/audit';
 import { format, startOfMonth, addMonths, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { roundToTwo } from '../lib/utils';
 
 interface CollectionData {
   id: string;
@@ -269,8 +268,8 @@ export default function Collections() {
         <div className="space-y-4">
           {paginatedCollectors.map(collector => {
             const collectorCollections = collections.filter(c => c.employeeId === collector.id);
-            const totalCollected = roundToTwo(collectorCollections.reduce((acc, c) => acc + c.totalCollected, 0));
-            const totalCash = roundToTwo(collectorCollections.reduce((acc, c) => acc + c.cashFinal, 0));
+            const totalCollected = collectorCollections.reduce((acc, c) => acc + c.totalCollected, 0);
+            const totalCash = collectorCollections.reduce((acc, c) => acc + c.cashFinal, 0);
             const isExpanded = expandedCollectors.has(collector.id);
             
             const currentPage = collectorPages[collector.id] || 1;

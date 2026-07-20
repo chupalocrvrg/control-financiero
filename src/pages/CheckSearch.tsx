@@ -4,7 +4,7 @@ import { useSettings } from '../contexts/SettingsContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { formatCurrency, cn, roundToTwo } from '../lib/utils';
+import { formatCurrency, cn } from '../lib/utils';
 import { format, parseISO } from 'date-fns';
 import { Download, Search, ChevronDown, ChevronRight, FilterX, FileText, CheckCircle2, AlertCircle, Trash2, RotateCcw, Trash, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -19,7 +19,6 @@ interface Invoice {
   concept: string;
   finalTotal: number;
   status: 'PENDING' | 'PAID';
-  enterpriseId?: string;
 }
 
 interface Check {
@@ -31,7 +30,6 @@ interface Check {
   amount: number;
   dueDate: string;
   status: 'PENDING' | 'PAID' | 'DELETED';
-  enterpriseId?: string;
 }
 
 export default function CheckSearch() {
@@ -137,11 +135,11 @@ export default function CheckSearch() {
         loadedInvoices = invoicesAll.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
         loadedChecks = checksAll.docs
           .map(doc => ({ id: doc.id, ...doc.data() } as Check))
-          .filter(c => c.status !== 'DELETED');
+          .filter(c => (c as any).status !== 'DELETED');
           
         if (selectedEnterpriseId) {
-          loadedInvoices = loadedInvoices.filter(inv => inv.enterpriseId === selectedEnterpriseId);
-          loadedChecks = loadedChecks.filter(c => c.enterpriseId === selectedEnterpriseId);
+          loadedInvoices = loadedInvoices.filter((inv: any) => inv.enterpriseId === selectedEnterpriseId);
+          loadedChecks = loadedChecks.filter((c: any) => c.enterpriseId === selectedEnterpriseId);
         }
       } else {
         // Regular user/employee: strictly limited to defaultEnterpriseId
@@ -156,7 +154,7 @@ export default function CheckSearch() {
         loadedInvoices = invoicesRes.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
         loadedChecks = checksRes.docs
           .map(doc => ({ id: doc.id, ...doc.data() } as Check))
-          .filter(c => c.status !== 'DELETED');
+          .filter(c => (c as any).status !== 'DELETED');
       }
 
       loadedInvoices.forEach(inv => {
@@ -252,9 +250,9 @@ export default function CheckSearch() {
   }, [checks, invoices, filters]);
 
   const totals = useMemo(() => {
-    const total = roundToTwo(filteredData.checks.reduce((acc, c) => acc + c.amount, 0));
-    const paid = roundToTwo(filteredData.checks.filter(c => c.status === 'PAID').reduce((acc, c) => acc + c.amount, 0));
-    const pending = roundToTwo(total - paid);
+    const total = filteredData.checks.reduce((acc, c) => acc + c.amount, 0);
+    const paid = filteredData.checks.filter(c => c.status === 'PAID').reduce((acc, c) => acc + c.amount, 0);
+    const pending = total - paid;
     return { total, paid, pending };
   }, [filteredData.checks]);
 

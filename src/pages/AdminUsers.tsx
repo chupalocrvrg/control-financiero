@@ -496,7 +496,7 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
     }
     setLoading(true);
     try {
-      const hashedPin = await hashPin(newPinValue, userId);
+      const hashedPin = await hashPin(newPinValue);
       await updateDoc(doc(db, 'users', userId), { pin: hashedPin });
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, pin: hashedPin } : u));
       if (selectedUser?.id === userId) setSelectedUser(prev => prev ? { ...prev, pin: hashedPin } : null);
@@ -624,19 +624,19 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
         return;
       }
 
-      if (import.meta.env.DEV) console.log(`Iniciando vaciado de datos para: ${selectedUser.name} (${selectedUser.id})`);
+      console.log(`Iniciando vaciado de datos para: ${selectedUser.name} (${selectedUser.id})`);
       
       // Fetch checks
       const checksPath = 'checks';
       const checksQ = query(collection(db, checksPath), where('userId', '==', selectedUser.id));
       const checksSnaps = await getDocs(checksQ);
-      if (import.meta.env.DEV) console.log(`Encontrados ${checksSnaps.size} cheques para eliminar.`);
+      console.log(`Encontrados ${checksSnaps.size} cheques para eliminar.`);
       
       // Fetch invoices
       const invoicesPath = 'invoices';
       const invoicesQ = query(collection(db, invoicesPath), where('userId', '==', selectedUser.id));
       const invSnaps = await getDocs(invoicesQ);
-      if (import.meta.env.DEV) console.log(`Encontradas ${invSnaps.size} facturas para eliminar.`);
+      console.log(`Encontradas ${invSnaps.size} facturas para eliminar.`);
       
       const { writeBatch } = await import('firebase/firestore');
       const batch = writeBatch(db);
@@ -650,7 +650,7 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
       });
       
       await batch.commit();
-      if (import.meta.env.DEV) console.log("Batch commit completado exitosamente.");
+      console.log("Batch commit completado exitosamente.");
       
       if (viewingUserInstance?.id === selectedUser.id) {
         setUserChecks([]);
@@ -682,7 +682,7 @@ export default function AdminUsers({ mode = "USERS" }: { mode?: "USERS" | "HISTO
         return;
       }
 
-      if (import.meta.env.DEV) console.log(`Iniciando eliminación total del usuario: ${selectedUser.name} (${selectedUser.id})`);
+      console.log(`Iniciando eliminación total del usuario: ${selectedUser.name} (${selectedUser.id})`);
       
       const { writeBatch } = await import('firebase/firestore');
       const batch = writeBatch(db);

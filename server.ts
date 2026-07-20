@@ -47,7 +47,7 @@ try {
   }
 
   firestoreDb = new admin.firestore.Firestore(dbSettings);
-  if (process.env.NODE_ENV !== 'production') console.log("Firebase Admin Firestore successfully initialized with database:", dbSettings.databaseId);
+  console.log("Firebase Admin Firestore successfully initialized with database:", dbSettings.databaseId);
 } catch (error) {
   console.error("Warning: Firebase Admin initialization failed:", error);
 }
@@ -253,7 +253,7 @@ async function startServer() {
               admin: true,
               role: 'SUPERADMIN'
             });
-            if (process.env.NODE_ENV !== 'production') console.log(`Custom claims successfully set for SUPERADMIN: ${email}`);
+            console.log(`Custom claims successfully set for SUPERADMIN: ${email}`);
           } catch (claimsError) {
             console.warn("Failed to set custom user claims on registration:", claimsError);
           }
@@ -292,7 +292,7 @@ async function startServer() {
             admin: isUserAdmin,
             role: currentRole
           });
-          if (process.env.NODE_ENV !== 'production') console.log(`Custom claims dynamically updated for ${email}: admin=${isUserAdmin}, role=${currentRole}`);
+          console.log(`Custom claims dynamically updated for ${email}: admin=${isUserAdmin}, role=${currentRole}`);
         } catch (claimsError) {
           console.warn("Failed to sync custom user claims on update:", claimsError);
         }
@@ -358,174 +358,10 @@ async function startServer() {
         role: role
       });
 
-      if (process.env.NODE_ENV !== 'production') console.log(`Successfully synced claims for ${uid}: admin=${isUserAdmin}, role=${role}`);
+      console.log(`Successfully synced claims for ${uid}: admin=${isUserAdmin}, role=${role}`);
       res.json({ success: true, role, admin: isUserAdmin });
     } catch (error: any) {
       console.error("Error syncing claims:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Endpoint to verify PIN securely on server with progressive rate limiting
-  app.post("/api/users/verify-pin", async (req, res) => {
-    try {
-      const { uid, pin } = req.body;
-      
-      if (!uid || !pin) {
-        return res.status(400).json({ error: "Parámetros requeridos faltantes (uid, pin)." });
-      }
-
-      if (!firestoreDb) {
-        return res.status(503).json({ error: "Base de datos no conectada." });
-      }
-
-      const userDocRef = firestoreDb.collection("users").doc(uid);
-      const userDoc = await userDocRef.get();
-      if (!userDoc.exists) {
-        return res.status(404).json({ error: "Usuario no encontrado." });
-      }
-
-      const userData = userDoc.data() || {};
-      
-      // Check lockout status
-      const now = new Date();
-      if (userData.pinLockUntil) {
-        const lockUntilDate = new Date(userData.pinLockUntil);
-        if (lockUntilDate > now) {
-          const remainingSeconds = Math.ceil((lockUntilDate.getTime() - now.getTime()) / 1000);
-          return res.status(423).json({ 
-            error: `Cuenta bloqueada temporalmente. Intente de nuevo en ${remainingSeconds} segundos.`,
-            lockUntil: userData.pinLockUntil,
-            remainingSeconds
-          });
-        }
-      }
-
-      // If user has no PIN set yet
-      if (!userData.pin) {
-        return res.json({ success: true, message: "El usuario no tiene PIN configurado." });
-      }
-
-      // Hash verification using crypto (SHA-256)
-      const crypto = await import("crypto");
-      
-      // 1. Salted hash: uid_pin
-      const saltedInput = `${uid}_${pin}`;
-      const saltedHash = crypto.createHash("sha256").update(saltedInput).digest("hex");
-      
-      // 2. Legacy hash: pin
-      const legacyHash = crypto.createHash("sha256").update(pin).digest("hex");
-      
-      const isMatch = userData.pin === saltedHash || userData.pin === legacyHash || userData.pin === pin;
-
-      if (isMatch) {
-        // Success: Reset failed attempts & lockout
-        await userDocRef.update({
-          failedPinAttempts: 0,
-          pinLockUntil: null,
-          pinCurrentPenalty: 60,
-          lastPinEntry: now.toISOString()
-        });
-
-        return res.json({ success: true, message: "PIN verificado correctamente." });
-      } else {
-        // Failure: Increment failed attempts
-        const currentFailedAttempts = (userData.failedPinAttempts || 0) + 1;
-        const currentPenalty = userData.pinCurrentPenalty || 60;
-        
-        let lockUntil: string | null = null;
-        let nextPenalty = currentPenalty;
-
-        if (currentFailedAttempts >= 3) {
-          // Calculate lock duration
-          const maxPenalty = 3 * 24 * 60 * 60; // 3 days in seconds
-          nextPenalty = Math.min(currentPenalty * 2, maxPenalty);
-          lockUntil = new Date(Date.now() + currentPenalty * 1000).toISOString();
-        }
-
-        const updateData: any = {
-          failedPinAttempts: currentFailedAttempts,
-          pinCurrentPenalty: nextPenalty
-        };
-        if (lockUntil) {
-          updateData.pinLockUntil = lockUntil;
-        } else {
-          // Ensure we clear out legacy lockouts if attempts are under 3 but some old lockout is still there
-          updateData.pinLockUntil = null;
-        }
-
-        await userDocRef.update(updateData);
-
-        return res.status(401).json({ 
-          error: "PIN incorrecto.",
-          failedAttempts: currentFailedAttempts,
-          lockUntil: lockUntil,
-          remainingSeconds: lockUntil ? currentPenalty : 0
-        });
-      }
-    } catch (error: any) {
-      console.error("Error verifying PIN on server:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Endpoint to reset PIN using TOTP code
-  app.post("/api/users/reset-pin", async (req, res) => {
-    try {
-      const { uid, totpCode, newPin } = req.body;
-      
-      if (!uid || !totpCode || !newPin) {
-        return res.status(400).json({ error: "Missing required parameters (uid, totpCode, newPin)." });
-      }
-
-      if (!firestoreDb) {
-        return res.status(503).json({ error: "Database not connected." });
-      }
-
-      const userDoc = await firestoreDb.collection("users").doc(uid).get();
-      if (!userDoc.exists) {
-        return res.status(404).json({ error: "User not found." });
-      }
-
-      const userData = userDoc.data() || {};
-      const totpSecret = userData.totpSecret;
-
-      if (!totpSecret) {
-        return res.status(400).json({ error: "User does not have 2FA configured." });
-      }
-
-      // Verify TOTP using otpauth
-      const otpauth = await import("otpauth");
-      const totp = new otpauth.TOTP({
-        issuer: "Control Financiero",
-        label: userData.email,
-        algorithm: "SHA1",
-        digits: 6,
-        period: 30,
-        secret: totpSecret,
-      });
-
-      const delta = totp.validate({ token: totpCode, window: 1 });
-      
-      if (delta === null) {
-        return res.status(401).json({ error: "Invalid TOTP code." });
-      }
-
-      // Valid! Update the PIN
-      const crypto = await import("crypto");
-      const pinToHash = `${uid}_${newPin}`;
-      const hashedPin = crypto.createHash("sha256").update(pinToHash).digest("hex");
-
-      const nowIso = new Date().toISOString();
-      await firestoreDb.collection("users").doc(uid).update({
-        pin: hashedPin,
-        lastPinEntry: nowIso
-      });
-
-      if (process.env.NODE_ENV !== 'production') console.log(`Successfully reset PIN for user ${uid} via TOTP verification on server.`);
-      res.json({ success: true, message: "PIN updated successfully." });
-    } catch (error: any) {
-      console.error("Error resetting PIN:", error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -548,7 +384,7 @@ async function startServer() {
           return res.status(401).json({ error: "Unauthorized: Invalid CRON_SECRET." });
         }
       } else if (isBypassed) {
-        if (process.env.NODE_ENV !== 'production') console.log("Cron execution bypassed security checks via explicit user bypass parameter.");
+        console.log("Cron execution bypassed security checks via explicit user bypass parameter.");
       } else {
         console.warn("Warning: CRON_SECRET is not set in environment. Bypassing cron security verification.");
       }
@@ -642,7 +478,7 @@ async function startServer() {
               html: htmlEmail
             });
             
-            if (process.env.NODE_ENV !== 'production') console.log(`[Resend Output for ${userEmail}]`, JSON.stringify(sendResponse));
+            console.log(`[Resend Output for ${userEmail}]`, JSON.stringify(sendResponse));
             
             if (sendResponse.error) {
               return { 
@@ -729,7 +565,7 @@ async function startServer() {
         </div>
       `;
 
-      if (process.env.NODE_ENV !== 'production') console.log(`[Resend Direct Test Initiating for recipient: ${email}]`);
+      console.log(`[Resend Direct Test Initiating for recipient: ${email}]`);
       const sendResponse = await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL || "Notificaciones <onboarding@resend.dev>",
         to: email,
@@ -737,7 +573,7 @@ async function startServer() {
         html: htmlEmail
       });
 
-      if (process.env.NODE_ENV !== 'production') console.log(`[Resend Direct Test Response]`, JSON.stringify(sendResponse));
+      console.log(`[Resend Direct Test Response]`, JSON.stringify(sendResponse));
 
       if (sendResponse.error) {
         return res.status(400).json({
@@ -774,7 +610,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    if (process.env.NODE_ENV !== 'production') console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 

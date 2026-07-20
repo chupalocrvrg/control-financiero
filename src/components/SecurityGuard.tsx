@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { MessageCircle, Lock, ShieldAlert, Power, ShieldCheck, Fingerprint, Clock } from 'lucide-react';
 import { cn } from '../lib/utils';
+import * as OTPAuth from 'otpauth';
 
 export default function SecurityGuard({ children }: { children: React.ReactNode }) {
-  const { isExpired, sessionVerified, verifyPin, logout, profile, updateProfile, setSessionVerified, user } = useAuth();
+  const { isExpired, sessionVerified, verifyPin, logout, profile, updateProfile, setSessionVerified } = useAuth();
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -22,34 +23,6 @@ export default function SecurityGuard({ children }: { children: React.ReactNode 
   const [confirmNewPin, setConfirmNewPin] = useState('');
   const [resetError, setResetError] = useState('');
 
-  // Synchronize Firestore server-side lockout state to local component state
-  useEffect(() => {
-    if (profile) {
-      if (profile.pinLockUntil) {
-        const serverLockUntil = new Date(profile.pinLockUntil).getTime();
-        if (serverLockUntil > Date.now()) {
-          setLockUntil(serverLockUntil);
-          localStorage.setItem('pin_lock_until', serverLockUntil.toString());
-        } else {
-          setLockUntil(0);
-          localStorage.removeItem('pin_lock_until');
-        }
-      } else {
-        setLockUntil(0);
-        localStorage.removeItem('pin_lock_until');
-      }
-
-      if (profile.failedPinAttempts !== undefined) {
-        setFailedAttempts(profile.failedPinAttempts);
-        localStorage.setItem('pin_failed_attempts', profile.failedPinAttempts.toString());
-      }
-      
-      if (profile.pinCurrentPenalty !== undefined) {
-        setCurrentPenalty(profile.pinCurrentPenalty);
-        localStorage.setItem('pin_current_penalty', profile.pinCurrentPenalty.toString());
-      }
-    }
-  }, [profile]);
 
   useEffect(() => {
     if (lockUntil > Date.now()) {
@@ -70,6 +43,7 @@ export default function SecurityGuard({ children }: { children: React.ReactNode 
     }
   }, [lockUntil]);
 
+  
   const handleResetPin = async (e: React.FormEvent) => {
     e.preventDefault();
     setResetError('');
@@ -89,27 +63,24 @@ export default function SecurityGuard({ children }: { children: React.ReactNode 
       return;
     }
     
+    const totp = new OTPAuth.TOTP({
+      issuer: 'Control Financiero',
+      label: profile?.email || 'Usuario',
+      algorithm: 'SHA1',
+      digits: 6,
+      period: 30,
+      secret: OTPAuth.Secret.fromBase32(profile.totpSecret)
+    });
+    
+    const delta = totp.validate({ token: totpCode, window: 1 });
+    if (delta === null) {
+      setResetError('Código de autenticador inválido.');
+      return;
+    }
+    
     try {
       setLoading(true);
-      
-      const response = await fetch('/api/users/reset-pin', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          uid: user?.uid,
-          totpCode,
-          newPin
-        })
-      });
-
-      const data = await response.json();
-      
-      if (!response.ok) {
-        setResetError(data.error || 'Error al restablecer el PIN.');
-        return;
-      }
+      await updateProfile({ pin: newPin });
       
       // Success, login with new PIN
       // We manually set verified because the profile listener might not have updated the state yet
@@ -139,23 +110,16 @@ export default function SecurityGuard({ children }: { children: React.ReactNode 
     
     setLoading(true);
     setError(false);
-    const result = await verifyPin(pin);
-    if (!result.success) {
+    const success = await verifyPin(pin);
+    if (!success) {
       setError(true);
       setPin('');
       
-      const newAttempts = result.failedAttempts !== undefined ? result.failedAttempts : (failedAttempts + 1);
+      const newAttempts = failedAttempts + 1;
       setFailedAttempts(newAttempts);
       localStorage.setItem('pin_failed_attempts', newAttempts.toString());
 
-      if (result.lockUntil) {
-        const untilTime = new Date(result.lockUntil).getTime();
-        setLockUntil(untilTime);
-        localStorage.setItem('pin_lock_until', untilTime.toString());
-        if (result.remainingSeconds) {
-          setRemainingLockTime(result.remainingSeconds);
-        }
-      } else if (newAttempts >= 3) {
+      if (newAttempts >= 3) {
         const penalty = currentPenalty;
         const maxPenalty = 3 * 24 * 60 * 60; // 3 days in seconds
         const nextPenalty = Math.min(penalty * 2, maxPenalty);
@@ -174,7 +138,6 @@ export default function SecurityGuard({ children }: { children: React.ReactNode 
       setFailedAttempts(0);
       setCurrentPenalty(60);
       setLockUntil(0);
-      setRemainingLockTime(0);
     }
     setLoading(false);
   };

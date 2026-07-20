@@ -11,25 +11,18 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
-    version: "4.19.1",
+    version: "4.14.0",
     date: new Date().toISOString(),
     changes: [
-      "Fortalecimiento de Seguridad en Hash del PIN: Se implementó un algoritmo de hash con sal individualizada (usando el UID del usuario como sal) en el cliente y servidor, previniendo ataques de tablas precalculadas (rainbow tables).",
-      "Robustez en Inicialización de Base de Datos: Se configuró ignoreUndefinedProperties: true al inicializar Firestore y se eliminaron los campos indefinidos, eliminando posibles fallos al guardar perfiles nuevos.",
-      "Rediseño del Estado de Sesión Expirada: Se separó y acondicionó el cálculo de expiración para que no bloquee ni flashee la pantalla de suscripción vencida antes de que el perfil de usuario se cargue o resuelva completamente.",
-      "Optimización del Límite de Inactividad del PIN: Se eliminó el restrictivo control calendario de medianoche, permitiendo que la sesión continúe activa de forma lógica y transparente según el límite de minutos seleccionado por el usuario.",
-      "Centralización de Perfil por Defecto: Se extrajo la estructura de perfiles nuevos a un helper reutilizable y tipado, erradicando código duplicado e inconsistencias en la inicialización y simulación de usuarios.",
-      "Consistencia Numérica en Cálculos Financieros: Se integró el redondeo preciso roundToTwo() en sumas críticas y acumuladores reduce, previniendo discrepancias de coma flotante IEEE-754."
-    ],
-  },
-  {
-    version: "4.19.0",
-    date: new Date().toISOString(),
-    changes: [
-      "Refuerzo de Seguridad 2FA/TOTP: Validación del código TOTP movida íntegramente al servidor para el reseteo de PIN, impidiendo su evasión mediante manipulación de cliente.",
-      "Reglas de Firestore Endurecidas: Acceso de escritura a la colección system_errors restringido para exigir que el usuario esté autenticado y validar el esquema y tamaño del error.",
-      "Optimización de Dependencias y Scripts: Se desinstaló la librería duplicada otplib (ahora se usa OTPAuth en el cliente y servidor) y se reorganizaron los scripts de mantenimiento a la carpeta /scripts.",
-      "Limpieza de Consola (Producción): Eliminados los logs de depuración del navegador para evitar filtraciones de datos internos usando variables de entorno DEV."
+      "Refactorización profunda del submódulo Empleados integrando la gestión de Presupuestos.",
+      "Implementación de nuevos roles para Supervisores de Ventas y Cobranza, con objetivos y metas globales.",
+      "Mejoras en el Dashboard de Rendimiento Comercial con tarjetas dinámicas expandibles para vendedores y cobradores.",
+      "Paginación implementada en Finanzas (Consultas) y Comercio (Cobranzas).",
+      "El Registro de Cobranzas ahora agrupa registros por cobrador en tarjetas expandibles.",
+      "Dashboard Bodegueros: visualización de stock real en préstamo en Casas Comerciales y alertas (>=3 uds).",
+      "Lógica predictiva y restrictiva para Devoluciones de Casas Comerciales basada en stock real en consignación.",
+      "Permiso para cargar, subir o importar foto de perfil (Google/URL/Archivo).",
+      "Correcciones de usabilidad en inputs numéricos e inputs en versión móvil.",
     ],
   },
   {
@@ -646,7 +639,7 @@ export async function getDynamicVersions(): Promise<ChangelogRelease[]> {
           const vDoc = await getDoc(versionDocRef);
           if (!vDoc.exists()) {
             await saveNewVersion(v.version, v.changes);
-            if (import.meta.env.DEV) console.log(`[Auto-Version] Automatically registered V${cleanV} in Firestore.`);
+            console.log(`[Auto-Version] Automatically registered V${cleanV} in Firestore.`);
           }
         } catch (err) {
           console.error(`[Auto-Version] Failed to automatically register V${cleanV}:`, err);

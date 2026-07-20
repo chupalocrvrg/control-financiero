@@ -5,7 +5,8 @@ import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firest
 import { addDays, isAfter, parseISO } from 'date-fns';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { logAudit, AuditAction } from '../lib/audit';
-import { hashPin, isSuperAdminEmail, createDefaultProfile } from '../lib/utils';
+import { hashPin } from '../lib/utils';
+import { isSuperAdminEmail } from '../lib/utils';
 
 export interface UserProfile {
   uid?: string;
@@ -25,9 +26,6 @@ export interface UserProfile {
   hasCompletedOnboarding?: boolean;
   totpSecret?: string;
   totpEnabled?: boolean;
-  failedPinAttempts?: number;
-  pinLockUntil?: string | null;
-  pinCurrentPenalty?: number;
 }
 
 interface AuthContextType {
@@ -39,7 +37,7 @@ interface AuthContextType {
   isExpired: boolean;
   login: () => Promise<void>;
   logout: () => Promise<void>;
-  verifyPin: (pin: string) => Promise<{ success: boolean; error?: string; remainingSeconds?: number; failedAttempts?: number; lockUntil?: string | null }>;
+  verifyPin: (pin: string) => Promise<boolean>;
   updateProfile: (data: Partial<UserProfile>) => Promise<void>;
   setSessionVerified: (val: boolean) => void;
   // User simulation properties (untracked in visible updates history indexes)
@@ -112,17 +110,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const now = new Date();
               const diffMins = (now.getTime() - lastEntry.getTime()) / 60000;
               
-              if (diffMins < (data.pinInactivityLimit || 1440)) {
+              if (now.toDateString() === lastEntry.toDateString() && diffMins < (data.pinInactivityLimit || 1440)) {
                 setSessionVerified(true);
               }
             }
           } else {
-            if (import.meta.env.DEV) console.log("Profile not found locally, creating client-side fallback...");
-            const defaultProfile = createDefaultProfile(firebaseUser.email || '', firebaseUser.displayName || '', {
+            console.log("Profile not found locally, creating client-side fallback...");
+            const defaultProfile = {
               uid: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              name: firebaseUser.displayName || 'Usuario Nuevo',
+              role: (isSuperAdminEmail(firebaseUser.email) ? 'SUPERADMIN' : 'USER') as any,
+              status: 'ENABLED' as any,
+              hasCompletedOnboarding: isSuperAdminEmail(firebaseUser.email),
+              subscriptionEnd: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
               createdAt: serverTimestamp(),
+              pin: "",
+              pinInactivityLimit: 60,
               lastPinEntry: serverTimestamp()
-            });
+            };
             try {
               await setDoc(docRef, defaultProfile);
               setActualProfile(defaultProfile as unknown as UserProfile);
@@ -231,41 +237,29 @@ useEffect(() => {
   };
 
   const verifyPin = async (pin: string) => {
-    const targetUid = impersonatedUser ? impersonatedUser.uid : actualUser?.uid;
-    if (!targetUid) {
-      return { success: false, error: "Usuario no autenticado." };
-    }
+    const targetUid = actualUser?.uid;
+    const targetProfile = actualProfile;
+    if (!targetUid || !targetProfile) return false;
     
-    try {
-      const response = await fetch('/api/users/verify-pin', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ uid: targetUid, pin })
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
+    // For backwards compatibility during migration, check plain text or hash
+    const hashedPin = await hashPin(pin);
+    const isMatch = targetProfile.pin === hashedPin || targetProfile.pin === pin;
+    
+    if (isMatch) {
+      try {
+        await updateDoc(doc(db, 'users', targetUid), {
+          lastPinEntry: serverTimestamp()
+        });
         const updatedTime = new Date().toISOString();
         if (actualProfile) setActualProfile({ ...actualProfile, lastPinEntry: updatedTime });
         if (!impersonatedUser && profile) setProfile({ ...profile, lastPinEntry: updatedTime });
         setSessionVerified(true);
-        return { success: true };
-      } else {
-        return { 
-          success: false, 
-          error: data.error || 'PIN incorrecto.', 
-          remainingSeconds: data.remainingSeconds, 
-          failedAttempts: data.failedAttempts, 
-          lockUntil: data.lockUntil 
-        };
+        return true;
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${targetUid}`);
       }
-    } catch (error: any) {
-      console.error("Error al verificar PIN:", error);
-      return { success: false, error: "Error de conexión con el servidor de seguridad." };
     }
+    return false;
   };
 
   const updateProfile = async (data: Partial<UserProfile>) => {
@@ -275,7 +269,7 @@ useEffect(() => {
     // Hash PIN if it is being updated
     const dataToSave = { ...data };
     if (dataToSave.pin) {
-      dataToSave.pin = await hashPin(dataToSave.pin, activeUid);
+      dataToSave.pin = await hashPin(dataToSave.pin);
     }
     
     const docRef = doc(db, 'users', activeUid);
@@ -284,18 +278,23 @@ useEffect(() => {
       
       if (!docSnap.exists()) {
         const activeEmail = impersonatedUser ? impersonatedUser.email : (actualUser?.email || '');
-        const newProfile = createDefaultProfile(activeEmail, dataToSave.name, {
+        const isAdminEmail = isSuperAdminEmail(activeEmail);
+        const newProfile = {
+          name: dataToSave.name || '',
           ruc: dataToSave.ruc || '',
           phone: dataToSave.phone || '',
+          email: activeEmail,
+          role: isAdminEmail ? 'SUPERADMIN' : 'USER',
+          hasCompletedOnboarding: isAdminEmail ? true : undefined,
+          status: 'ENABLED',
+          subscriptionEnd: addDays(new Date(), 90).toISOString(),
           pin: dataToSave.pin || '',
-          createdAt: serverTimestamp(),
+          pinInactivityLimit: 60,
           lastPinEntry: serverTimestamp(),
+          createdAt: serverTimestamp(),
           ...dataToSave
-        });
-        if (import.meta.env.DEV) {
-          console.log("Creating new profile:", JSON.stringify(newProfile, null, 2));
-        }
-        await setDoc(docRef, newProfile);
+        };
+        console.log("newProfile", newProfile); console.log("Creating new profile:", JSON.stringify(newProfile, null, 2)); await setDoc(docRef, newProfile);
         setProfile(newProfile as unknown as UserProfile);
         if (!impersonatedUser) {
           setActualProfile(newProfile as unknown as UserProfile);
@@ -333,8 +332,18 @@ useEffect(() => {
         if (docSnap.exists()) {
           setProfile(docSnap.data() as UserProfile);
         } else {
-          // Fallback static profile structured gracefully using centralized helper
-          setProfile(createDefaultProfile(targetUser.email, targetUser.displayName, { uid: targetUser.uid }));
+          // Fallback static profile structured gracefully
+          setProfile({
+            name: targetUser.displayName || targetUser.email.split('@')[0],
+            email: targetUser.email,
+            role: 'USER',
+            status: 'ENABLED',
+            subscriptionEnd: addDays(new Date(), 90).toISOString(),
+            pin: '',
+            pinInactivityLimit: 60,
+            lastPinEntry: new Date().toISOString(),
+            createdAt: new Date().toISOString()
+          });
         }
         setSessionVerified(true); // Automatically bypass security keys & PINs during active simulation
         logAudit(AuditAction.SETTINGS_UPDATE, `Inició simulación de identidad para la cuenta: ${targetUser.email}`);
@@ -353,9 +362,9 @@ useEffect(() => {
 
   const isSuperAdminOriginal = isSuperAdminEmail(actualUser?.email);
   const isAdmin = profile?.role === 'ADMIN' || profile?.role === 'SUPERADMIN' || isSuperAdminEmail(effectiveUser?.email);
-  const isExpired = !loading && profile 
+  const isExpired = profile 
     ? (!isAdmin && !isSuperAdminOriginal && (isAfter(new Date(), parseISO(profile.subscriptionEnd)) || profile.status === 'DISABLED')) 
-    : false;
+    : (!!effectiveUser);
 
   return (
     <AuthContext.Provider value={{ 
