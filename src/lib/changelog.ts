@@ -11,6 +11,15 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.22.3",
+    date: new Date().toISOString(),
+    changes: [
+      "Compatibilidad Vercel Serverless: Se reestructuró el backend (server.ts) para exportar de forma nativa la aplicación Express.",
+      "Se agregó 'api/index.ts' y se reescribieron las reglas de 'vercel.json' para soportar endpoints de la API (PIN y Cron) en despliegues estáticos.",
+      "Resolución del problema donde el PIN no funcionaba en producción en Vercel."
+    ],
+  },
+  {
     version: "4.22.2",
     date: new Date().toISOString(),
     changes: [

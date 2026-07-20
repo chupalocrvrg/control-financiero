@@ -167,12 +167,11 @@ function generateReportHtml(userName: string, checks: any[]): string {
   `;
 }
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+export const app = express();
+const PORT = 3000;
 
-  // Middleware to parse incoming JSON bodies
-  app.use(express.json());
+// Middleware to parse incoming JSON bodies
+app.use(express.json());
 
   const SUPER_ADMIN_EMAILS = [
     process.env.VITE_SUPER_ADMIN_EMAIL,
@@ -982,6 +981,7 @@ async function startServer() {
   });
 
   // Service Routing
+async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -1001,4 +1001,8 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
