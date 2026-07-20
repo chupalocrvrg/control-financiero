@@ -23,6 +23,11 @@ export default function SecurityGuard({ children }: { children: React.ReactNode 
   const [confirmNewPin, setConfirmNewPin] = useState('');
   const [resetError, setResetError] = useState('');
 
+  useEffect(() => {
+    if (!sessionVerified) {
+      setPin('');
+    }
+  }, [sessionVerified]);
 
   useEffect(() => {
     if (lockUntil > Date.now()) {
@@ -132,6 +137,7 @@ export default function SecurityGuard({ children }: { children: React.ReactNode 
         localStorage.setItem('pin_current_penalty', nextPenalty.toString());
       }
     } else {
+      setPin(''); // Clear PIN so it doesn't stay pre-filled if logged out again
       localStorage.removeItem('pin_failed_attempts');
       localStorage.removeItem('pin_lock_until');
       localStorage.removeItem('pin_current_penalty');

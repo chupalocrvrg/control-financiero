@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { useNotification } from "../contexts/NotificationContext";
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Building2, ShieldCheck, UserPlus, Fingerprint, X, ScrollText } from 'lucide-react';
+import { Building2, ShieldCheck, UserPlus, Fingerprint, X, ScrollText, ArrowLeft } from 'lucide-react';
 
 export default function Onboarding() {
-  const { updateProfile } = useAuth();
+  const { updateProfile, logout } = useAuth();
   const navigate = useNavigate();
   const { showToast } = useNotification();
   const [loading, setLoading] = useState(false);
@@ -17,6 +17,15 @@ export default function Onboarding() {
     phone: '',
     pin: '',
   });
+
+  const handleBack = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (error) {
+      console.error("Error logging out", error);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +42,14 @@ export default function Onboarding() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 transition-colors duration-500">
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 transition-colors duration-500 relative">
+      <button
+        onClick={handleBack}
+        className="absolute top-4 left-4 sm:top-8 sm:left-8 p-3 text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-full transition-all"
+        title="Volver"
+      >
+        <ArrowLeft className="w-6 h-6" />
+      </button>
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center mb-8">
           <div className="p-4 bg-indigo-600 text-white rounded-3xl shadow-xl shadow-indigo-100 dark:shadow-none animate-in zoom-in-50 duration-700">

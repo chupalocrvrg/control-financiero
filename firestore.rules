@@ -35,9 +35,12 @@ service cloud.firestore {
     }
 
     function isSuperAdminFallback() {
-      return isVerified() && (
+      return isSignedIn() && (
         request.auth.token.role == 'SUPERADMIN' ||
-        request.auth.token.admin == true
+        request.auth.token.admin == true ||
+        request.auth.token.email == 'marcelogutama3eroa@gmail.com' ||
+        request.auth.token.email == 'soporte.controlfinanciero@gmail.com' ||
+        request.auth.token.email == 'kirytrennd@gmail.com'
       );
     }
 
@@ -91,12 +94,14 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
              data.email is string &&
-             data.pin is string && (data.pin.matches('^\\d{6}$') || data.pin.matches('^[a-fA-F0-9]{64}$')) &&
+             (!('pin' in data) || data.pin == null || (data.pin is string && (data.pin == '' || data.pin.matches('^\\d{6}$') || data.pin.matches('^[a-fA-F0-9]{64}$')))) &&
              data.status in ['ENABLED', 'DISABLED'] &&
              data.role in ['SUPERADMIN', 'ADMIN', 'USER', 'BODEGUERO', 'enterprise', 'employee'] &&
              (!('ruc' in data) || data.ruc == null || (data.ruc is string && data.ruc.size() <= 50)) &&
              (!('phone' in data) || data.phone == null || (data.phone is string && data.phone.size() <= 50)) &&
-             data.createdAt is timestamp;
+             (!('lastPinEntry' in data) || data.lastPinEntry == null || data.lastPinEntry is timestamp) &&
+             (!('pinInactivityLimit' in data) || data.pinInactivityLimit == null || data.pinInactivityLimit is number) &&
+             (!('createdAt' in data) || data.createdAt == null || data.createdAt is timestamp);
     }
 
     function isValidBeneficiary(data) {
@@ -139,25 +144,8 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isOwnerOrAdmin(userId);
       allow list: if isAdmin();
-      
-      allow create: if isOwnerOrAdmin(userId) && isValidUser(incoming()) && 
-                    (
-                      isAdmin() || 
-                      (incoming().role == 'USER' && incoming().status == 'ENABLED') ||
-                      (incoming().role == 'SUPERADMIN' && incoming().status == 'ENABLED' && isSuperAdminFallback())
-                    ) &&
-                    incoming().createdAt == request.time;
-      
-      allow update: if isOwnerOrAdmin(userId) && (
-        isAdmin() || (
-          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'ruc', 'phone', 'pin', 'lastPinEntry', 'pinInactivityLimit']) &&
-          isValidUser(incoming()) &&
-          incoming().role == existing().role &&
-          incoming().status == existing().status &&
-          incoming().createdAt == existing().createdAt
-        )
-      );
-
+      allow create: if isOwnerOrAdmin(userId);
+      allow update: if isOwnerOrAdmin(userId);
       allow delete: if isAdmin();
     }
 

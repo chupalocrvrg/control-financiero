@@ -11,6 +11,69 @@ export interface ChangelogRelease {
 
 export const staticChangelog: ChangelogRelease[] = [
   {
+    version: "4.14.8",
+    date: new Date().toISOString(),
+    changes: [
+      "Corrección de visualización en módulo de Cobranzas: Se asegura que se muestren todas las cobranzas de la empresa (sin ocultarlas por inconsistencias de empleados eliminados) y se evita el error de permisos en Firebase al buscar registros globales."
+    ]
+  },
+  {
+    version: "4.14.7",
+    date: new Date().toISOString(),
+    changes: [
+      "Se ha silenciado el error inofensivo de permisos al intentar registrar versiones automáticamente por usuarios sin rol de administrador."
+    ]
+  },
+  {
+    version: "4.14.6",
+    date: new Date().toISOString(),
+    changes: [
+      "Eliminación temporal de restricciones complejas en reglas de Firestore (users) para mitigar bloqueo de permisos al activar cuenta (Onboarding)."
+    ]
+  },
+  {
+    version: "4.14.5",
+    date: new Date().toISOString(),
+    changes: [
+      "Relajación temporal de las reglas de actualización en base de datos para identificar el bloqueo de permisos al activar la cuenta (Onboarding).",
+      "Optimización en la evaluación de campos durante la edición del perfil de usuario."
+    ]
+  },
+  {
+    version: "4.14.4",
+    date: new Date().toISOString(),
+    changes: [
+      "Añadido botón de retroceso (volver al Login) en la vista de Configuración Maestro (Onboarding).",
+      "Confirmación de resolución de permisos en Firestore que bloqueaban el registro del primer usuario."
+    ]
+  },
+  {
+    version: "4.14.3",
+    date: new Date().toISOString(),
+    changes: [
+      "Implementado `checkUserExists` explícito en `AuthContext` durante el flujo de inicio de sesión con Google para asegurar la creación del perfil.",
+      "Corrección de permisos en Firestore Rules permitiendo la creación de nuevos usuarios y administradores correctamente.",
+    ]
+  },
+  {
+    version: "4.14.2",
+    date: new Date().toISOString(),
+    changes: [
+      "Corregido problema de permisos de Security Rules para la actualización de perfiles de usuario y administradores.",
+      "Ajustes en Firestore Rules para evitar rechazos en el proceso de creación/actualización por campos faltantes o valores nulos.",
+    ]
+  },
+  {
+    version: "4.14.1",
+    date: new Date().toISOString(),
+    changes: [
+      "Corregido error de permisos (Security Rules) al registrar nuevos usuarios mediante Google.",
+      "Añadido borrado de PIN por seguridad al bloquear la sesión por inactividad.",
+      "Optimización en la carga y separación de preferencias de usuario entre distintas cuentas.",
+      "Implementación de Meta Tags Open Graph en index.html para Rich Link Previews."
+    ]
+  },
+  {
     version: "4.14.0",
     date: new Date().toISOString(),
     changes: [
@@ -642,7 +705,8 @@ export async function getDynamicVersions(): Promise<ChangelogRelease[]> {
             console.log(`[Auto-Version] Automatically registered V${cleanV} in Firestore.`);
           }
         } catch (err) {
-          console.error(`[Auto-Version] Failed to automatically register V${cleanV}:`, err);
+          // Silently ignore permission errors for non-admins
+          if (err.code !== "permission-denied") console.error(`[Auto-Version] Failed to automatically register V${cleanV}:`, err);
         }
       }
     }

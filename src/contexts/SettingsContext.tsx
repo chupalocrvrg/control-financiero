@@ -66,7 +66,6 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, profile, impersonatedUser } = useAuth();
   const [settings, setSettings] = useState<Settings>(() => {
-    const saved = localStorage.getItem('app-settings');
     const defaultVals = {
       theme: 'system' as const,
       currency: 'USD' as const,
@@ -77,13 +76,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       dockMagnificationType: 'scale' as const,
       dockProximity: true,
     };
-    if (saved) {
-      try {
-        return { ...defaultVals, ...JSON.parse(saved) };
-      } catch (e) {
-        console.error('Error parsing saved settings:', e);
-      }
-    }
     return defaultVals;
   });
   const [loading, setLoading] = useState(true);
@@ -141,7 +133,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           // Try loading from localStorage first to get quick results if offline/cached
           let localSaved: any = {};
           const localKey = `app-settings-${user.uid}`;
-          const savedStr = localStorage.getItem(localKey) || localStorage.getItem('app-settings');
+          const savedStr = localStorage.getItem(localKey);
           if (savedStr) {
             try {
               localSaved = JSON.parse(savedStr);
@@ -280,7 +272,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     if (user) {
       localStorage.setItem(`app-settings-${user.uid}`, JSON.stringify(updated));
-      localStorage.setItem('app-settings', JSON.stringify(updated));
     }
 
     if (user) {

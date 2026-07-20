@@ -80,18 +80,10 @@ export default function Collections() {
       const snapEmp = await getDocs(qEmp);
       setEmployees(snapEmp.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee)));
 
-      // Since finalDate and initialDate are strings YYYY-MM-DD, we filter client side for the month
-      const qColl = query(collection(db, 'collections'));
+      const qColl = query(collection(db, 'collections'), where('enterpriseId', '==', currentEnterpriseId));
       const snapColl = await getDocs(qColl);
       
       let allCollections = snapColl.docs.map(doc => ({ id: doc.id, ...doc.data() } as CollectionData));
-      
-      if (profile?.role === 'BODEGUERO') {
-        allCollections = allCollections.filter((c: any) => c.enterpriseId === currentEnterpriseId);
-      } else {
-        const empIds = snapEmp.docs.map(d => d.id);
-        allCollections = allCollections.filter(c => empIds.includes(c.employeeId));
-      }
 
       // Filter by month (using initialDate)
       allCollections = allCollections.filter(c => c.initialDate && c.initialDate.startsWith(currentMonth));

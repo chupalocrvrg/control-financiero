@@ -208,6 +208,36 @@ useEffect(() => {
         }
         throw new Error("Edge/Safari está bloqueando las cookies de terceros. Para iniciar sesión, desactive la prevención de rastreo (ícono de candado/escudo en la URL) o permita cookies de terceros.");
       }
+      
+      // checkUserExists logic
+      const firebaseUser = result.user;
+      const docRef = doc(db, 'users', firebaseUser.uid);
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) {
+        console.log("checkUserExists: Profile not found, creating initial document during login flow...");
+        const defaultProfile = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          name: firebaseUser.displayName || 'Usuario Nuevo',
+          role: (isSuperAdminEmail(firebaseUser.email) ? 'SUPERADMIN' : 'USER') as any,
+          status: 'ENABLED' as any,
+          hasCompletedOnboarding: isSuperAdminEmail(firebaseUser.email),
+          subscriptionEnd: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+          createdAt: serverTimestamp(),
+          pin: "",
+          pinInactivityLimit: 60,
+          lastPinEntry: serverTimestamp()
+        };
+        try {
+          await setDoc(docRef, defaultProfile);
+          setActualProfile(defaultProfile as unknown as UserProfile);
+          setProfile(defaultProfile as unknown as UserProfile);
+        } catch (err) {
+          console.error("checkUserExists: Could not create fallback profile during login", err);
+          throw new Error("No se pudo crear el perfil de usuario. Intenta de nuevo.");
+        }
+      }
+      
       logAudit(AuditAction.USER_LOGIN, 'Inicio de sesión exitoso por proveedor Google', undefined, result.user);
     } catch (error: any) {
       console.error("Error signing in with Google popup", error);
@@ -280,7 +310,7 @@ useEffect(() => {
         const activeEmail = impersonatedUser ? impersonatedUser.email : (actualUser?.email || '');
         const isAdminEmail = isSuperAdminEmail(activeEmail);
         const newProfile = {
-          name: dataToSave.name || '',
+          name: dataToSave.name || activeEmail.split('@')[0] || 'Usuario Nuevo',
           ruc: dataToSave.ruc || '',
           phone: dataToSave.phone || '',
           email: activeEmail,
@@ -292,6 +322,7 @@ useEffect(() => {
           pinInactivityLimit: 60,
           lastPinEntry: serverTimestamp(),
           createdAt: serverTimestamp(),
+          enterpriseId: activeUid,
           ...dataToSave
         };
         console.log("newProfile", newProfile); console.log("Creating new profile:", JSON.stringify(newProfile, null, 2)); await setDoc(docRef, newProfile);
